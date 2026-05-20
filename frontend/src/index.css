@@ -153,4 +153,137 @@ input[type="text"], input[type="number"] {
 input[type="text"]:focus, input[type="number"]:focus {
   outline: none;
   border-color: var(--accent-light);
+  box-shadow: 0 0 10px rgba(139, 92, 246, 0.25);
+}
+
+/* Custom Scrollbar for Premium Feel */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(139, 92, 246, 0.3);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(139, 92, 246, 0.5);
+}
+
+/* Row Hover Transitions */
+.lyric-segment-row {
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.lyric-segment-row:hover {
+  background: rgba(255, 255, 255, 0.03);
+  transform: translateX(2px);
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
+/* Audio Player Stylings */
+audio::-webkit-media-controls-panel {
+  background-color: rgba(30, 41, 59, 0.95);
+}
+
+audio::-webkit-media-controls-play-button,
+audio::-webkit-media-controls-timeline,
+audio::-webkit-media-controls-current-time-display,
+audio::-webkit-media-controls-time-remaining-display,
+audio::-webkit-media-controls-volume-slider,
+audio::-webkit-media-controls-mute-button {
+  filter: invert(1) hue-rotate(180deg);
+}
+
+/* Project Row Hover Glow */
+.project-row:hover {
+  box-shadow: 0 8px 20px rgba(139, 92, 246, 0.15);
+}
+
+/* Site Navbar Header Style */
+.site-navbar {
+  background: rgba(15, 17, 26, 0.75);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-bottom: 1px solid var(--glass-border);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  width: 100%;
+  padding: 0.85rem 0;
+  box-shadow: 0 4px 30px rgba(0, 0, 0, 0.15);
+  animation: fadeIn 0.4s ease forwards;
+}
+
+.navbar-container {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 0 2rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.navbar-brand {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  text-decoration: none;
+  color: var(--text-main);
+  font-weight: 800;
+  font-size: 1.2rem;
+  transition: transform 0.2s ease, opacity 0.2s ease;
+}
+
+.navbar-brand:hover {
+  transform: translateY(-1px);
+  opacity: 0.95;
+}
+
+.navbar-icon {
+  color: var(--accent-light);
+  filter: drop-shadow(0 0 8px rgba(139, 92, 246, 0.5));
+  transition: transform 0.3s ease;
+}
+
+.navbar-brand:hover .navbar-icon {
+  transform: rotate(10deg);
+}
+
+.navbar-title {
+  background: -webkit-linear-gradient(45deg, var(--text-main), var(--accent-light));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  letter-spacing: -0.01em;
+}
+
+.navbar-links {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.navbar-link-btn {
+  background: rgba(139, 92, 246, 0.1);
+  border: 1px solid rgba(139, 92, 246, 0.3);
+  color: var(--accent-light);
+  text-decoration: none;
+  padding: 0.4rem 1rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  border-radius: 20px;
+  transition: all 0.25s ease;
+}
+
+.navbar-link-btn:hover {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+  box-shadow: 0 0 15px rgba(139, 92, 246, 0.4);
 }

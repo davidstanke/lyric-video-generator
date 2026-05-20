@@ -7,6 +7,8 @@ const ffmpeg = require('fluent-ffmpeg');
 const fs = require('fs');
 const path = require('path');
 const { generateSrt } = require('./utils/srtGenerator');
+const { execSync } = require('child_process');
+const { dbQuery, storageDir } = require('./database');
 
 const app = express();
 const port = process.env.PORT || 3001;
@@ -14,16 +16,30 @@ const port = process.env.PORT || 3001;
 app.use(cors());
 app.use(express.json());
 
-// Ensure uploads and output directories exist
-const uploadsDir = path.join(__dirname, 'uploads');
-const outputDir = path.join(__dirname, 'output');
-if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir);
-if (!fs.existsSync(outputDir)) fs.mkdirSync(outputDir);
+// Configure Multer to save audio to storage/audio/
+const uploadStorage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    cb(null, path.join(storageDir, 'audio'))
+  },
+  filename: function (req, file, cb) {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9)
+    cb(null, uniqueSuffix + path.extname(file.originalname))
+  }
+});
+const upload = multer({ storage: uploadStorage });
 
-const upload = multer({ dest: 'uploads/' });
+// Helper to get duration of audio
+function getAudioDuration(filePath) {
+  try {
+    const output = execSync(`ffprobe -i "${filePath}" -show_entries format=duration -v quiet -of csv="p=0"`).toString();
+    return parseFloat(output.trim());
+  } catch (e) {
+    console.error('Error getting duration:', e);
+    return 55.0; // fallback
+  }
+}
 
 // Initialize Google Cloud Speech Client
-// Requires GOOGLE_APPLICATION_CREDENTIALS environment variable
 let speechClient;
 try {
   speechClient = new speech.SpeechClient();
@@ -31,125 +47,284 @@ try {
   console.warn("Google Cloud Speech client initialization failed. Ensure GOOGLE_APPLICATION_CREDENTIALS is set.", error.message);
 }
 
-app.post('/api/upload', upload.single('audio'), async (req, res) => {
+// REST ENDPOINTS
+
+// 1. GET /api/projects - List all projects
+app.get('/api/projects', async (req, res) => {
+  try {
+    const projects = await dbQuery.all('SELECT id, name, audio_path, video_path, created_at, updated_at FROM projects ORDER BY created_at DESC');
+    
+    // Format response to provide relative URLs for video_path and audio_path
+    const formattedProjects = projects.map(p => ({
+      ...p,
+      audioUrl: `/audio/${path.basename(p.audio_path)}`,
+      videoUrl: p.video_path ? `/output/${path.basename(p.video_path)}` : null
+    }));
+    
+    res.json(formattedProjects);
+  } catch (error) {
+    console.error('Error listing projects:', error);
+    res.status(500).json({ error: 'Failed to retrieve projects' });
+  }
+});
+
+// 2. GET /api/projects/:id - Get specific project details
+app.get('/api/projects/:id', async (req, res) => {
+  try {
+    const project = await dbQuery.get('SELECT * FROM projects WHERE id = ?', [req.params.id]);
+    if (!project) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+    
+    res.json({
+      ...project,
+      manifest: JSON.parse(project.manifest),
+      audioUrl: `/audio/${path.basename(project.audio_path)}`,
+      videoUrl: project.video_path ? `/output/${path.basename(project.video_path)}` : null
+    });
+  } catch (error) {
+    console.error('Error retrieving project:', error);
+    res.status(500).json({ error: 'Failed to retrieve project details' });
+  }
+});
+
+// 3. POST /api/projects - Create a new project (Upload & Transcribe)
+app.post('/api/projects', upload.single('audio'), async (req, res) => {
+  let chunksDir = null;
   try {
     if (!req.file) {
       return res.status(400).json({ error: 'No audio file provided' });
     }
 
+    const filePath = req.file.path;
+    const totalDuration = getAudioDuration(filePath);
+    console.log(`Processing file: ${req.file.originalname} (Duration: ${totalDuration.toFixed(1)}s)`);
+
+    let manifest = [];
+    let idCounter = 1;
+    let transcriptionStatus = 'success';
+
     if (!speechClient) {
-      return res.status(500).json({ error: 'Speech client not initialized. Check server configuration.' });
+      console.warn("Google Cloud Speech client not initialized. Creating project with manual fallback manifest.");
+      transcriptionStatus = 'manual';
+    } else {
+      try {
+        if (totalDuration <= 59.0) {
+          // Short audio: transcribe directly
+          const audioBytes = fs.readFileSync(filePath).toString('base64');
+          const audio = { content: audioBytes };
+          const config = {
+            encoding: 'MP3',
+            sampleRateHertz: 44100,
+            languageCode: 'en-US',
+            enableWordTimeOffsets: true,
+          };
+
+          console.log(`Transcribing ${req.file.originalname} directly...`);
+          const [response] = await speechClient.recognize({ audio, config });
+          
+          response.results.forEach((result) => {
+            const alternative = result.alternatives[0];
+            const wordsInfo = alternative.words;
+            if (wordsInfo.length > 0) {
+              const startTime = parseFloat(wordsInfo[0].startTime.seconds || 0) + (wordsInfo[0].startTime.nanos || 0) / 1e9;
+              const endTime = parseFloat(wordsInfo[wordsInfo.length - 1].endTime.seconds || 0) + (wordsInfo[wordsInfo.length - 1].endTime.nanos || 0) / 1e9;
+              manifest.push({
+                id: idCounter++,
+                startTime,
+                endTime,
+                text: alternative.transcript.trim(),
+              });
+            }
+          });
+        } else {
+          // Long audio: chunk using FFmpeg first
+          chunksDir = path.join(storageDir, 'audio', `chunks_${Date.now()}`);
+          fs.mkdirSync(chunksDir);
+
+          console.log(`Splitting audio into chunks...`);
+          execSync(`ffmpeg -i "${filePath}" -f segment -segment_time 50 -c copy "${chunksDir}/chunk_%03d.mp3"`);
+
+          const chunkFiles = fs.readdirSync(chunksDir)
+            .filter(file => file.startsWith('chunk_') && file.endsWith('.mp3'))
+            .sort();
+
+          console.log(`Created ${chunkFiles.length} chunks. Transcribing sequentially...`);
+          
+          let cumulativeTime = 0;
+
+          for (const file of chunkFiles) {
+            const chunkPath = path.join(chunksDir, file);
+            const audioBytes = fs.readFileSync(chunkPath).toString('base64');
+            const audio = { content: audioBytes };
+            const config = {
+              encoding: 'MP3',
+              sampleRateHertz: 44100,
+              languageCode: 'en-US',
+              enableWordTimeOffsets: true,
+            };
+
+            console.log(`Transcribing chunk: ${file}`);
+            const [response] = await speechClient.recognize({ audio, config });
+
+            response.results.forEach((result) => {
+              const alternative = result.alternatives[0];
+              const wordsInfo = alternative.words;
+              if (wordsInfo.length > 0) {
+                const startTime = parseFloat(wordsInfo[0].startTime.seconds || 0) + (wordsInfo[0].startTime.nanos || 0) / 1e9;
+                const endTime = parseFloat(wordsInfo[wordsInfo.length - 1].endTime.seconds || 0) + (wordsInfo[wordsInfo.length - 1].endTime.nanos || 0) / 1e9;
+                manifest.push({
+                  id: idCounter++,
+                  startTime: startTime + cumulativeTime,
+                  endTime: endTime + cumulativeTime,
+                  text: alternative.transcript.trim(),
+                });
+              }
+            });
+
+            // Add chunk duration to cumulativeTime
+            const duration = getAudioDuration(chunkPath);
+            cumulativeTime += duration;
+
+            // Clean up chunk file
+            try { fs.unlinkSync(chunkPath); } catch (e) {}
+          }
+        }
+      } catch (transcribeError) {
+        console.error("Transcription error encountered, falling back to manual mode:", transcribeError.message);
+        transcriptionStatus = 'manual';
+        manifest = [];
+      }
     }
 
-    const filePath = req.file.path;
-    const audioBytes = fs.readFileSync(filePath).toString('base64');
+    if (transcriptionStatus === 'manual' || manifest.length === 0) {
+      // Fallback: Create a single skeleton lyric segment
+      manifest = [{
+        id: idCounter++,
+        startTime: 0.0,
+        endTime: Math.min(10.0, totalDuration),
+        text: "[Enter lyrics here]"
+      }];
+    }
 
-    const audio = {
-      content: audioBytes,
-    };
+    // Default project name: e.g. "My Video - sample.mp3"
+    const projectName = `Lyric Video - ${path.basename(req.file.originalname)}`;
     
-    // Configure based on MP3, typical settings
-    const config = {
-      encoding: 'MP3',
-      sampleRateHertz: 44100, // May need dynamic detection if files vary
-      languageCode: 'en-US',
-      enableWordTimeOffsets: true,
-    };
-
-    const request = {
-      audio: audio,
-      config: config,
-    };
-
-    console.log(`Transcribing ${req.file.originalname}...`);
-    const [response] = await speechClient.recognize(request);
-    
-    // Parse response into our manifest structure
-    const manifest = [];
-    let idCounter = 1;
-    
-    response.results.forEach((result) => {
-      const alternative = result.alternatives[0];
-      const wordsInfo = alternative.words;
-      
-      // Group words into segments (sentences/phrases). 
-      // For simplicity, we can group them loosely based on pauses or just chunks.
-      // Here, we'll create a single segment per result (often corresponds to a phrase/sentence)
-      if (wordsInfo.length > 0) {
-        const startTime = parseFloat(wordsInfo[0].startTime.seconds || 0) + 
-                          (wordsInfo[0].startTime.nanos || 0) / 1e9;
-        const endTime = parseFloat(wordsInfo[wordsInfo.length - 1].endTime.seconds || 0) + 
-                        (wordsInfo[wordsInfo.length - 1].endTime.nanos || 0) / 1e9;
-        
-        manifest.push({
-          id: idCounter++,
-          startTime,
-          endTime,
-          text: alternative.transcript.trim(),
-        });
-      }
-    });
+    // Save project in SQLite database
+    const insertResult = await dbQuery.run(
+      'INSERT INTO projects (name, audio_path, manifest) VALUES (?, ?, ?)',
+      [projectName, filePath, JSON.stringify(manifest)]
+    );
 
     res.json({
+      id: insertResult.id,
+      name: projectName,
       audioPath: filePath,
-      manifest: manifest
+      manifest: manifest,
+      transcriptionStatus: transcriptionStatus
     });
 
   } catch (error) {
     console.error('Error processing upload:', error);
     res.status(500).json({ error: 'Error processing upload', details: error.message });
+  } finally {
+    // Ensure cleanup of chunks folder
+    if (chunksDir && fs.existsSync(chunksDir)) {
+      try {
+        const files = fs.readdirSync(chunksDir);
+        for (const file of files) {
+          fs.unlinkSync(path.join(chunksDir, file));
+        }
+        fs.rmdirSync(chunksDir);
+      } catch (e) {
+        console.error('Cleanup of chunks directory failed:', e);
+      }
+    }
   }
 });
 
-app.post('/api/render', async (req, res) => {
+// 4. PUT /api/projects/:id/manifest - Save updated manifest
+app.put('/api/projects/:id/manifest', async (req, res) => {
   try {
-    const { audioPath, manifest } = req.body;
-    
-    if (!audioPath || !manifest) {
-      return res.status(400).json({ error: 'Audio path and manifest are required' });
+    const { manifest } = req.body;
+    if (!manifest) {
+      return res.status(400).json({ error: 'Manifest is required' });
     }
 
+    // Check project exists
+    const project = await dbQuery.get('SELECT id FROM projects WHERE id = ?', [req.params.id]);
+    if (!project) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+
+    await dbQuery.run(
+      'UPDATE projects SET manifest = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+      [JSON.stringify(manifest), req.params.id]
+    );
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Error updating manifest:', error);
+    res.status(500).json({ error: 'Failed to update manifest' });
+  }
+});
+
+// 5. POST /api/projects/:id/render - Render video
+app.post('/api/projects/:id/render', async (req, res) => {
+  try {
+    const project = await dbQuery.get('SELECT * FROM projects WHERE id = ?', [req.params.id]);
+    if (!project) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+
+    const audioPath = project.audio_path;
+    const manifest = JSON.parse(project.manifest);
+
     if (!fs.existsSync(audioPath)) {
-      return res.status(404).json({ error: 'Audio file not found on server' });
+      return res.status(404).json({ error: 'Audio file not found on disk' });
     }
 
     const srtContent = generateSrt(manifest);
     const srtFilename = `subtitles_${Date.now()}.srt`;
-    const srtPath = path.join(__dirname, 'uploads', srtFilename);
+    const srtPath = path.join(storageDir, 'subtitles', srtFilename);
     fs.writeFileSync(srtPath, srtContent);
 
     const outputFilename = `lyric_video_${Date.now()}.mp4`;
-    const outputPath = path.join(outputDir, outputFilename);
+    const outputPath = path.join(storageDir, 'video', outputFilename);
 
     console.log('Starting FFmpeg rendering...');
 
-    // Need an absolute path for FFmpeg subtitles filter and we must escape backslashes on Windows, 
-    // but on Linux we just need absolute path.
     const absoluteSrtPath = path.resolve(srtPath);
 
     ffmpeg()
-      // Input 1: generate a solid background video, 720p, matching duration of audio
       .input('color=c=black:s=1280x720')
       .inputFormat('lavfi')
-      // Input 2: the audio file
       .input(audioPath)
-      // Stop encoding when the shortest stream ends (the audio)
       .outputOptions(['-shortest'])
-      // Add subtitles
-      // We must escape colons in the path for the subtitles filter if any exist, but on linux usually fine
       .videoFilters(`subtitles='${absoluteSrtPath}'`)
       .audioCodec('aac')
       .videoCodec('libx264')
-      .on('end', () => {
+      .on('end', async () => {
         console.log('FFmpeg processing finished.');
+        
+        // Save output path to database
+        await dbQuery.run(
+          'UPDATE projects SET video_path = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+          [outputPath, req.params.id]
+        );
+
+        // Delete temporary subtitle file
+        try { fs.unlinkSync(srtPath); } catch (e) {}
+
         res.json({ 
           success: true, 
-          videoUrl: `http://localhost:${port}/output/${outputFilename}`,
+          videoUrl: `/output/${outputFilename}`,
           videoPath: outputPath
         });
       })
       .on('error', (err) => {
         console.error('Error in FFmpeg processing:', err);
+        try { fs.unlinkSync(srtPath); } catch (e) {}
         res.status(500).json({ error: 'Error generating video', details: err.message });
       })
       .save(outputPath);
@@ -160,7 +335,37 @@ app.post('/api/render', async (req, res) => {
   }
 });
 
-app.use('/output', express.static(path.join(__dirname, 'output')));
+// 6. DELETE /api/projects/:id - Delete project and files
+app.delete('/api/projects/:id', async (req, res) => {
+  try {
+    const project = await dbQuery.get('SELECT * FROM projects WHERE id = ?', [req.params.id]);
+    if (!project) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+
+    // Delete audio file
+    if (project.audio_path && fs.existsSync(project.audio_path)) {
+      try { fs.unlinkSync(project.audio_path); } catch (e) { console.error('Failed to delete audio file:', e.message); }
+    }
+
+    // Delete video file
+    if (project.video_path && fs.existsSync(project.video_path)) {
+      try { fs.unlinkSync(project.video_path); } catch (e) { console.error('Failed to delete video file:', e.message); }
+    }
+
+    // Delete database entry
+    await dbQuery.run('DELETE FROM projects WHERE id = ?', [req.params.id]);
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Error deleting project:', error);
+    res.status(500).json({ error: 'Failed to delete project' });
+  }
+});
+
+// Expose static files from storage directory
+app.use('/output', express.static(path.join(storageDir, 'video')));
+app.use('/audio', express.static(path.join(storageDir, 'audio')));
 
 app.listen(port, () => {
   console.log(`Backend server running on port ${port}`);

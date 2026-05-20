@@ -1,8 +1,8 @@
-import React, { useState, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useState, useRef } from 'react';
+import { useNavigate, Link } from 'react-router-dom';
 import axios from 'axios';
 
-function UploadPage({ setAppData }) {
+function UploadPage() {
   const [file, setFile] = useState(null);
   const [isUploading, setIsUploading] = useState(false);
   const [error, setError] = useState(null);
@@ -26,19 +26,14 @@ function UploadPage({ setAppData }) {
     formData.append('audio', file);
 
     try {
-      const response = await axios.post('http://localhost:3001/api/upload', formData, {
+      const response = await axios.post('/api/projects', formData, {
         headers: {
           'Content-Type': 'multipart/form-data'
         }
       });
 
-      setAppData({
-        audioPath: response.data.audioPath,
-        manifest: response.data.manifest,
-        videoUrl: null
-      });
-
-      navigate('/editor');
+      // Redirect to the newly created project's edit screen
+      navigate(`/projects/${response.data.id}/edit`);
     } catch (err) {
       console.error(err);
       setError(err.response?.data?.error || 'Failed to upload and transcribe audio. Make sure backend is running and Google Cloud credentials are set.');
@@ -48,9 +43,14 @@ function UploadPage({ setAppData }) {
   };
 
   return (
-    <div className="glass-panel animate-fade-in" style={{ textAlign: 'center' }}>
-      <h2>Upload Audio</h2>
-      <p style={{ marginBottom: '2rem' }}>Select an MP3 file to automatically generate lyrics.</p>
+    <div className="glass-panel animate-fade-in" style={{ textAlign: 'center', maxWidth: '600px', margin: '0 auto', width: '100%' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
+        <h2 style={{ margin: 0 }}>Upload Audio</h2>
+        <Link to="/" style={{ color: 'var(--text-muted)', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.9rem' }}>
+          ← Back to Projects
+        </Link>
+      </div>
+      <p style={{ marginBottom: '2rem', textAlign: 'left' }}>Select an MP3 file to automatically generate lyrics and timestamps using Google Cloud Speech-to-Text.</p>
 
       <div 
         style={{
@@ -75,7 +75,7 @@ function UploadPage({ setAppData }) {
         />
         {file ? (
           <div>
-            <h3 style={{ color: 'var(--accent-light)' }}>{file.name}</h3>
+            <h3 style={{ color: 'var(--accent-light)', wordBreak: 'break-all' }}>{file.name}</h3>
             <p>({(file.size / 1024 / 1024).toFixed(2)} MB)</p>
           </div>
         ) : (
@@ -91,23 +91,28 @@ function UploadPage({ setAppData }) {
       </div>
 
       {error && (
-        <div style={{ color: '#ef4444', marginBottom: '1rem', background: 'rgba(239, 68, 68, 0.1)', padding: '1rem', borderRadius: '8px' }}>
+        <div style={{ color: '#ef4444', marginBottom: '1rem', background: 'rgba(239, 68, 68, 0.1)', padding: '1rem', borderRadius: '8px', textAlign: 'left' }}>
           {error}
         </div>
       )}
 
-      <button 
-        className="btn" 
-        onClick={handleUpload} 
-        disabled={!file || isUploading}
-        style={{ width: '100%', maxWidth: '300px' }}
-      >
-        {isUploading ? (
-          <span className="animate-pulse">Processing Audio...</span>
-        ) : (
-          'Generate Lyrics Manifest'
-        )}
-      </button>
+      <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center' }}>
+        <button 
+          className="btn" 
+          onClick={handleUpload} 
+          disabled={!file || isUploading}
+          style={{ flex: 1, maxWidth: '250px' }}
+        >
+          {isUploading ? (
+            <span className="animate-pulse">Processing Audio...</span>
+          ) : (
+            'Generate Lyrics'
+          )}
+        </button>
+        <Link to="/" className="btn btn-secondary" style={{ flex: 1, maxWidth: '150px' }}>
+          Cancel
+        </Link>
+      </div>
     </div>
   );
 }
