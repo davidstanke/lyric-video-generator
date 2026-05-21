@@ -133,6 +133,23 @@ function EditorPage() {
   const [validationError, setValidationError] = useState(null);
   const [isRawDirty, setIsRawDirty] = useState(false);
   
+  // Custom toast and confirm modal states
+  const [toast, setToast] = useState(null);
+  const [confirmModal, setConfirmModal] = useState(null);
+
+  const showToast = (message, type = 'success') => {
+    setToast({ message, type });
+  };
+
+  useEffect(() => {
+    if (toast) {
+      const timer = setTimeout(() => {
+        setToast(null);
+      }, 3500);
+      return () => clearTimeout(timer);
+    }
+  }, [toast]);
+
   // Title renaming state
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [editedTitle, setEditedTitle] = useState('');
@@ -277,12 +294,17 @@ function EditorPage() {
   };
 
   const handleRevertRawChanges = () => {
-    if (window.confirm('Are you sure you want to discard your raw SRT edits?')) {
-      const rawSrt = stringifySrt(manifest);
-      setSrtText(rawSrt);
-      setValidationError(null);
-      setIsRawDirty(false);
-    }
+    setConfirmModal({
+      title: 'Discard Raw Edits?',
+      message: 'Are you sure you want to discard your raw SRT edits and revert to the last saved state? All unsaved text changes will be lost.',
+      onConfirm: () => {
+        const rawSrt = stringifySrt(manifest);
+        setSrtText(rawSrt);
+        setValidationError(null);
+        setIsRawDirty(false);
+        setConfirmModal(null);
+      }
+    });
   };
 
   const handleSaveManifest = async () => {
@@ -297,7 +319,7 @@ function EditorPage() {
         setIsRawDirty(false);
       }
       await axios.put(`/api/projects/${id}/manifest`, { manifest: activeManifest });
-      alert('Manifest saved successfully!');
+      showToast('Manifest saved successfully!', 'success');
     } catch (err) {
       console.error(err);
       if (err.message && !err.response) {
@@ -795,6 +817,62 @@ function EditorPage() {
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {toast && (
+        <div className="toast-container">
+          <div className={`toast toast-${toast.type}`}>
+            <div className={`toast-icon ${toast.type}`}>
+              {toast.type === 'success' ? (
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+                  <polyline points="22 4 12 14.01 9 11.01"></polyline>
+                </svg>
+              ) : (
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="12" cy="12" r="10"></circle>
+                  <line x1="15" y1="9" x2="9" y2="15"></line>
+                  <line x1="9" y1="9" x2="15" y2="15"></line>
+                </svg>
+              )}
+            </div>
+            <div className="toast-content">{toast.message}</div>
+            <button className="toast-close" onClick={() => setToast(null)} title="Close">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="18" y1="6" x2="6" y2="18"></line>
+                <line x1="6" y1="6" x2="18" y2="18"></line>
+              </svg>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {confirmModal && (
+        <div className="modal-overlay">
+          <div className="modal-card">
+            <div className="modal-header">
+              <div className="modal-icon-container warning">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
+                  <line x1="12" y1="9" x2="12" y2="13"></line>
+                  <line x1="12" y1="17" x2="12.01" y2="17"></line>
+                </svg>
+              </div>
+              <h3 className="modal-title">{confirmModal.title}</h3>
+            </div>
+            <div className="modal-body">
+              {confirmModal.message}
+            </div>
+            <div className="modal-actions">
+              <button className="btn btn-secondary" style={{ padding: '0.5rem 1.25rem', fontSize: '0.9rem' }} onClick={() => setConfirmModal(null)}>
+                Cancel
+              </button>
+              <button className="btn" style={{ padding: '0.5rem 1.25rem', fontSize: '0.9rem' }} onClick={confirmModal.onConfirm}>
+                Confirm
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
