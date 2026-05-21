@@ -21,6 +21,51 @@ function EditorPage() {
   const [currentTime, setCurrentTime] = useState(0);
   const audioRef = useRef(null);
 
+  // Sticky state for player
+  const [isScrolled, setIsScrolled] = useState(false);
+
+  // Scroll listener to toggle sticky mode
+  useEffect(() => {
+    const handleScroll = () => {
+      // Toggle sticky state if scrolled past 140px
+      if (window.scrollY > 140) {
+        setIsScrolled(true);
+      } else {
+        setIsScrolled(false);
+      }
+    };
+
+    window.addEventListener('scroll', handleScroll);
+    return () => {
+      window.removeEventListener('scroll', handleScroll);
+    };
+  }, []);
+
+  // Global keyboard shortcut listener
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      // Toggle play/pause on Alt/Option + Space or Ctrl + Space
+      const isAltSpace = e.altKey && e.code === 'Space';
+      const isCtrlSpace = e.ctrlKey && e.code === 'Space';
+
+      if ((isAltSpace || isCtrlSpace) && audioRef.current) {
+        e.preventDefault(); // Prevent scrolling page or adding spaces in inputs
+        if (audioRef.current.paused) {
+          audioRef.current.play().catch(err => {
+            console.error('Failed to play audio via shortcut:', err);
+          });
+        } else {
+          audioRef.current.pause();
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, []);
+
   useEffect(() => {
     const fetchProject = async () => {
       setIsLoading(true);
@@ -295,29 +340,21 @@ function EditorPage() {
       )}
 
       {/* Integrated Audio Player */}
-      <div className="audio-player-container" style={{
-        background: 'rgba(255, 255, 255, 0.03)',
-        border: '1px solid var(--glass-border)',
-        borderRadius: '12px',
-        padding: '1rem',
-        marginBottom: '2rem',
-        display: 'flex',
-        flexDirection: 'column',
-        gap: '0.5rem'
-      }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)', fontWeight: '600' }}>Audio Reference Player</span>
-          <span style={{ fontSize: '0.85rem', color: 'var(--accent-light)', fontFamily: 'monospace', fontWeight: 'bold' }}>
-            Current Time: {currentTime.toFixed(1)}s
-          </span>
+      <div className={`audio-player-container ${isScrolled ? 'is-sticky' : ''}`}>
+        <div className="audio-player-inner">
+          <div className="audio-player-meta">
+            <span className="audio-player-title-badge">Audio Reference Player</span>
+            <span className="audio-player-time">
+              Current Time: {currentTime.toFixed(1)}s
+            </span>
+          </div>
+          <audio 
+            ref={audioRef}
+            src={project.audioUrl} 
+            controls 
+            onTimeUpdate={handleTimeUpdate}
+          />
         </div>
-        <audio 
-          ref={audioRef}
-          src={project.audioUrl} 
-          controls 
-          onTimeUpdate={handleTimeUpdate}
-          style={{ width: '100%', borderRadius: '8px' }}
-        />
       </div>
 
       {error && (
