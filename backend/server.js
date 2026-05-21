@@ -40,6 +40,13 @@ function getAudioDuration(filePath) {
   }
 }
 
+// Automatically set GOOGLE_APPLICATION_CREDENTIALS if service-account-key.json is present in the parent folder
+const keyPath = path.join(__dirname, '../service-account-key.json');
+if (!process.env.GOOGLE_APPLICATION_CREDENTIALS && fs.existsSync(keyPath)) {
+  process.env.GOOGLE_APPLICATION_CREDENTIALS = keyPath;
+  console.log(`--> Set GOOGLE_APPLICATION_CREDENTIALS to: ${keyPath}`);
+}
+
 // Initialize Google Cloud Speech Client
 let speechClient;
 try {
