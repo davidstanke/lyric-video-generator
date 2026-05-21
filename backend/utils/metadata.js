@@ -76,6 +76,73 @@ function cleanName(name, isMetadata = false) {
 }
 
 /**
+ * Helper to convert a string to Title Case, keeping standard minor words lowercase
+ * unless they are the first or last word.
+ * @param {string} str 
+ * @returns {string}
+ */
+function toTitleCase(str) {
+  if (!str) return '';
+
+  // If the string is completely UPPERCASE, convert it to lowercase first
+  // to avoid preserving screaming all-caps words (like "WAKE ME UP")
+  if (str === str.toUpperCase()) {
+    str = str.toLowerCase();
+  }
+
+  const lowercaseWords = new Set([
+    'a', 'an', 'the',
+    'and', 'but', 'or', 'nor', 'for', 'yet', 'so',
+    'at', 'by', 'in', 'of', 'on', 'to', 'with', 'from', 'into', 'onto', 'as', 'than', 'vs', 'v'
+  ]);
+
+  // Split by whitespace
+  const words = str.split(/\s+/);
+  
+  const titleCasedWords = words.map((word, idx) => {
+    if (!word) return '';
+
+    // Handle compound words/hyphens (e.g. "well-known")
+    if (word.includes('-')) {
+      const parts = word.split('-');
+      return parts
+        .map((subword, subIdx) => {
+          if (!subword) return '';
+          const isFirstOrLast = (idx === 0 && subIdx === 0) || (idx === words.length - 1 && subIdx === parts.length - 1);
+          const cleanSubword = subword.toLowerCase();
+          if (lowercaseWords.has(cleanSubword) && !isFirstOrLast) {
+            return cleanSubword;
+          }
+          // Preserve all-caps acronyms (e.g., "NASA")
+          if (subword === subword.toUpperCase() && subword.match(/^[A-Z]{2,}$/)) {
+            return subword;
+          }
+          return subword.charAt(0).toUpperCase() + subword.slice(1).toLowerCase();
+        })
+        .join('-');
+    }
+
+    const cleanWord = word.toLowerCase();
+    const isFirstOrLast = idx === 0 || idx === words.length - 1;
+
+    // Check if it's a lowercase word and not first/last
+    if (lowercaseWords.has(cleanWord) && !isFirstOrLast) {
+      return cleanWord;
+    }
+
+    // Preserve all-caps acronyms (e.g., "NASA")
+    if (word === word.toUpperCase() && word.match(/^[A-Z]{2,}$/)) {
+      return word;
+    }
+
+    // Otherwise, capitalize first letter, lowercase the rest
+    return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+  });
+
+  return titleCasedWords.join(' ');
+}
+
+/**
  * Guesses a high-quality song title based on ffprobe tags or a cleaned file name fallback.
  * @param {string} filePath - Absolute path to the file on disk
  * @param {string} originalName - Original name of the uploaded file (e.g. from req.file.originalname)
@@ -113,12 +180,13 @@ function guessTitle(filePath, originalName) {
   const cleanedFileTitle = cleanName(nameToClean, false);
   
   return {
-    guessedTitle: cleanedFileTitle,
+    guessedTitle: toTitleCase(cleanedFileTitle),
     duration
   };
 }
 
 module.exports = {
   probeAudio,
-  guessTitle
+  guessTitle,
+  toTitleCase
 };
