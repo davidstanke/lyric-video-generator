@@ -50,7 +50,7 @@ function UploadPage() {
           ← Back to Projects
         </Link>
       </div>
-      <p style={{ marginBottom: '2rem', textAlign: 'left' }}>Select an MP3 file to automatically generate lyrics and timestamps using Google Cloud Speech-to-Text.</p>
+      <p style={{ marginBottom: '2rem', textAlign: 'left' }}>Select an audio file (MP3, M4A, WAV, etc.) to automatically generate lyrics and timestamps using Google Cloud Speech-to-Text.</p>
 
       <div 
         style={{
@@ -68,7 +68,7 @@ function UploadPage() {
       >
         <input 
           type="file" 
-          accept="audio/mpeg, audio/mp3" 
+          accept="audio/*" 
           ref={fileInputRef} 
           style={{ display: 'none' }} 
           onChange={handleFileChange}
@@ -85,7 +85,7 @@ function UploadPage() {
               <polyline points="17 8 12 3 7 8"></polyline>
               <line x1="12" y1="3" x2="12" y2="15"></line>
             </svg>
-            <p>Click or drag to upload an MP3 file</p>
+            <p>Click or drag to upload an audio file (MP3, M4A, WAV, etc.)</p>
           </div>
         )}
       </div>
