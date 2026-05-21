@@ -32,11 +32,6 @@ cleanup() {
 # Trap EXIT, SIGINT, and SIGTERM to ensure robust cleanup under all exit conditions
 trap cleanup EXIT SIGINT SIGTERM
 
-# Set Google Application Credentials if service-account-key.json exists in root
-if [ -f "service-account-key.json" ]; then
-  export GOOGLE_APPLICATION_CREDENTIALS="$(pwd)/service-account-key.json"
-  echo "--> Found service-account-key.json. Setting GOOGLE_APPLICATION_CREDENTIALS..."
-fi
 
 # Start Backend
 echo "--> Starting Backend on port 3001 (Logging to logs/backend.log)..."
