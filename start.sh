@@ -58,12 +58,33 @@ npm run dev -- --host > ../logs/frontend.log 2>&1 &
 FRONTEND_PID=$!
 cd ..
 
-echo "========================================================"
-echo "Services are running in the background."
-echo "Backend PID: $BACKEND_PID | Log: logs/backend.log"
-echo "Frontend PID: $FRONTEND_PID | Log: logs/frontend.log"
-echo "Press Ctrl+C to stop both services."
-echo "========================================================"
+# Construct clickable terminal hyperlinks
+FRONTEND_URL="http://localhost:5173"
+BACKEND_URL="http://localhost:3001"
+
+if [ -t 1 ]; then
+  # Use OSC 8 escape sequences for nice terminal-native clickable hyperlinks with blue underline color
+  FRONTEND_LINK=$(printf "\033[4;34m\033]8;;%s\033\\\\%s\033]8;;\033\\\\\033[0m" "$FRONTEND_URL" "$FRONTEND_URL")
+  BACKEND_LINK=$(printf "\033[4;34m\033]8;;%s\033\\\\%s\033]8;;\033\\\\\033[0m" "$BACKEND_URL" "$BACKEND_URL")
+  
+  echo -e "\033[1;36m========================================================\033[0m"
+  echo -e "\033[1;32m🚀 Lyric Video Generator Services are now running!\033[0m"
+  echo -e "\033[36m--------------------------------------------------------\033[0m"
+  echo -e "\033[1mFrontend URL:\033[0m $FRONTEND_LINK  \033[90m(PID: $FRONTEND_PID, Log: logs/frontend.log)\033[0m"
+  echo -e "\033[1mBackend URL:\033[0m  $BACKEND_LINK   \033[90m(PID: $BACKEND_PID, Log: logs/backend.log)\033[0m"
+  echo -e "\033[36m--------------------------------------------------------\033[0m"
+  echo -e "\033[1;33m👉 Press Ctrl+C to stop both services.\033[0m"
+  echo -e "\033[1;36m========================================================\033[0m"
+else
+  echo "========================================================"
+  echo "Lyric Video Generator Services are now running!"
+  echo "--------------------------------------------------------"
+  echo "Frontend URL: $FRONTEND_URL  (PID: $FRONTEND_PID, Log: logs/frontend.log)"
+  echo "Backend URL:  $BACKEND_URL   (PID: $BACKEND_PID, Log: logs/backend.log)"
+  echo "--------------------------------------------------------"
+  echo "Press Ctrl+C to stop both services."
+  echo "========================================================"
+fi
 
 # Wait for background processes to keep the script running
 wait $BACKEND_PID $FRONTEND_PID
