@@ -12,6 +12,11 @@ function EditorPage() {
   const [isRendering, setIsRendering] = useState(false);
   const [error, setError] = useState(null);
   
+  // Title renaming state
+  const [isEditingTitle, setIsEditingTitle] = useState(false);
+  const [editedTitle, setEditedTitle] = useState('');
+  const [isRenaming, setIsRenaming] = useState(false);
+  
   // Audio state & reference
   const [currentTime, setCurrentTime] = useState(0);
   const audioRef = useRef(null);
@@ -23,6 +28,7 @@ function EditorPage() {
         const response = await axios.get(`/api/projects/${id}`);
         setProject(response.data);
         setManifest(response.data.manifest || []);
+        setEditedTitle(response.data.name || '');
       } catch (err) {
         console.error(err);
         setError('Failed to load project details. Make sure the backend is running.');
@@ -52,6 +58,25 @@ function EditorPage() {
 
   const handleDeleteSegment = (segId) => {
     setManifest(manifest.filter(seg => seg.id !== segId));
+  };
+
+  const handleRenameTitle = async () => {
+    if (!editedTitle.trim() || editedTitle.trim() === project.name) {
+      setIsEditingTitle(false);
+      return;
+    }
+
+    setIsRenaming(true);
+    try {
+      const response = await axios.put(`/api/projects/${id}/rename`, { name: editedTitle.trim() });
+      setProject({ ...project, name: response.data.name });
+      setIsEditingTitle(false);
+    } catch (err) {
+      console.error(err);
+      setError(err.response?.data?.error || 'Failed to rename project.');
+    } finally {
+      setIsRenaming(false);
+    }
   };
 
   const handleSaveManifest = async () => {
@@ -144,8 +169,121 @@ function EditorPage() {
       </div>
 
       <div style={{ marginBottom: '1.5rem' }}>
-        <h2 style={{ marginBottom: '0.25rem' }}>{project.name}</h2>
-        <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+        {isEditingTitle ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem' }}>
+            <input 
+              type="text" 
+              value={editedTitle} 
+              onChange={(e) => setEditedTitle(e.target.value)} 
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') handleRenameTitle();
+                if (e.key === 'Escape') {
+                  setEditedTitle(project.name);
+                  setIsEditingTitle(false);
+                }
+              }}
+              autoFocus
+              style={{
+                fontSize: '1.75rem',
+                fontWeight: 'bold',
+                background: 'rgba(0,0,0,0.3)',
+                border: '1px solid var(--accent-light)',
+                borderRadius: '8px',
+                padding: '0.25rem 0.75rem',
+                color: 'var(--text-main)',
+                maxWidth: '500px',
+                width: '100%',
+                boxSizing: 'border-box'
+              }}
+              disabled={isRenaming}
+            />
+            <button 
+              onClick={handleRenameTitle}
+              disabled={isRenaming}
+              style={{
+                background: 'rgba(16, 185, 129, 0.15)',
+                border: '1px solid #10b981',
+                borderRadius: '6px',
+                color: '#10b981',
+                padding: '0.5rem',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                width: '38px',
+                height: '38px'
+              }}
+              title="Save Name"
+            >
+              {isRenaming ? (
+                <span className="animate-pulse">...</span>
+              ) : (
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="20 6 9 17 4 12"></polyline>
+                </svg>
+              )}
+            </button>
+            <button 
+              onClick={() => {
+                setEditedTitle(project.name);
+                setIsEditingTitle(false);
+              }}
+              disabled={isRenaming}
+              style={{
+                background: 'rgba(239, 68, 68, 0.15)',
+                border: '1px solid #ef4444',
+                borderRadius: '6px',
+                color: '#ef4444',
+                padding: '0.5rem',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                width: '38px',
+                height: '38px'
+              }}
+              title="Cancel"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="18" y1="6" x2="6" y2="18"></line>
+                <line x1="6" y1="6" x2="18" y2="18"></line>
+              </svg>
+            </button>
+          </div>
+        ) : (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.25rem' }}>
+            <h2 
+              style={{ margin: 0, cursor: 'pointer' }}
+              onDoubleClick={() => setIsEditingTitle(true)}
+              title="Double click to edit"
+            >
+              {project.name}
+            </h2>
+            <button 
+              onClick={() => setIsEditingTitle(true)}
+              style={{
+                background: 'none',
+                border: 'none',
+                color: 'var(--text-muted)',
+                cursor: 'pointer',
+                padding: '0.25rem',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                transition: 'color 0.2s'
+              }}
+              onMouseOver={(e) => e.currentTarget.style.color = 'var(--accent-light)'}
+              onMouseOut={(e) => e.currentTarget.style.color = 'var(--text-muted)'}
+              title="Edit Project Name"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12 20h9"></path>
+                <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
+              </svg>
+            </button>
+          </div>
+        )}
+        <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', margin: 0 }}>
           Original Audio Path: <code style={{ background: 'rgba(255,255,255,0.05)', padding: '0.1rem 0.3rem', borderRadius: '4px', wordBreak: 'break-all' }}>{project.audio_path}</code>
         </p>
       </div>
