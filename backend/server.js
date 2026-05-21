@@ -6,7 +6,7 @@ const speech = require('@google-cloud/speech');
 const ffmpeg = require('fluent-ffmpeg');
 const fs = require('fs');
 const path = require('path');
-const { generateSrt } = require('./utils/srtGenerator');
+const { generateAss } = require('./utils/assGenerator');
 const { execSync } = require('child_process');
 const { dbQuery, storageDir } = require('./database');
 const { guessTitle } = require('./utils/metadata');
@@ -396,10 +396,10 @@ app.post('/api/projects/:id/render', async (req, res) => {
       return res.status(404).json({ error: 'Audio file not found on disk' });
     }
 
-    const srtContent = generateSrt(manifest);
-    const srtFilename = `subtitles_${Date.now()}.srt`;
-    const srtPath = path.join(storageDir, 'subtitles', srtFilename);
-    fs.writeFileSync(srtPath, srtContent);
+    const assContent = generateAss(manifest);
+    const assFilename = `subtitles_${Date.now()}.ass`;
+    const assPath = path.join(storageDir, 'subtitles', assFilename);
+    fs.writeFileSync(assPath, assContent);
 
     const sanitizedTitle = project.name.toLowerCase()
       .replace(/[^a-z0-9]+/g, '_')
@@ -410,7 +410,11 @@ app.post('/api/projects/:id/render', async (req, res) => {
 
     console.log('Starting FFmpeg rendering...');
 
-    const absoluteSrtPath = path.resolve(srtPath);
+    const absoluteAssPath = path.resolve(assPath);
+    const absoluteFontsDir = path.resolve(__dirname, '..', 'resources', 'fonts');
+
+    const escapedAssPath = absoluteAssPath.replace(/\\/g, '/').replace(/:/g, '\\:');
+    const escapedFontsDir = absoluteFontsDir.replace(/\\/g, '/').replace(/:/g, '\\:');
 
     const command = ffmpeg();
 
@@ -430,7 +434,7 @@ app.post('/api/projects/:id/render', async (req, res) => {
       .inputFormat('lavfi')
       .input(audioPath)
       .outputOptions(['-shortest'])
-      .videoFilters(`subtitles='${absoluteSrtPath}'`)
+      .videoFilters(`subtitles='${escapedAssPath}':fontsdir='${escapedFontsDir}'`)
       .audioCodec('aac')
       .videoCodec('libx264')
       .on('end', async () => {
@@ -443,7 +447,7 @@ app.post('/api/projects/:id/render', async (req, res) => {
         );
 
         // Delete temporary subtitle file
-        try { fs.unlinkSync(srtPath); } catch (e) {}
+        try { fs.unlinkSync(assPath); } catch (e) {}
 
         res.json({ 
           success: true, 
@@ -453,7 +457,7 @@ app.post('/api/projects/:id/render', async (req, res) => {
       })
       .on('error', (err) => {
         console.error('Error in FFmpeg processing:', err);
-        try { fs.unlinkSync(srtPath); } catch (e) {}
+        try { fs.unlinkSync(assPath); } catch (e) {}
         res.status(500).json({ error: 'Error generating video', details: err.message });
       })
       .save(outputPath);
