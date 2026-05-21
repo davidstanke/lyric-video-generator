@@ -412,7 +412,20 @@ app.post('/api/projects/:id/render', async (req, res) => {
 
     const absoluteSrtPath = path.resolve(srtPath);
 
-    ffmpeg()
+    const command = ffmpeg();
+
+    // Bypass fluent-ffmpeg capability check for the lavfi virtual device/format
+    const originalAvailableFormats = command.availableFormats;
+    command.availableFormats = function(cb) {
+      originalAvailableFormats.call(this, (err, formats) => {
+        if (err) return cb(err);
+        formats = formats || {};
+        formats.lavfi = { canDemux: true, canMux: true, description: 'lavfi virtual device' };
+        cb(null, formats);
+      });
+    };
+
+    command
       .input('color=c=black:s=1280x720')
       .inputFormat('lavfi')
       .input(audioPath)
