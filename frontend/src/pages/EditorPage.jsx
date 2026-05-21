@@ -164,6 +164,25 @@ function EditorPage() {
   const setTimeToCurrent = (segId, field) => {
     if (!audioRef.current) return;
     const time = parseFloat(audioRef.current.currentTime.toFixed(1));
+    
+    if (field === 'endTime') {
+      const index = manifest.findIndex(seg => seg.id === segId);
+      if (index !== -1 && index < manifest.length - 1) {
+        const nextSegment = manifest[index + 1];
+        if (nextSegment.startTime === 0) {
+          setManifest(manifest.map((seg, i) => {
+            if (seg.id === segId) {
+              return { ...seg, endTime: time };
+            } else if (i === index + 1) {
+              return { ...seg, startTime: time };
+            }
+            return seg;
+          }));
+          return;
+        }
+      }
+    }
+    
     handleTimeChange(segId, field, time);
   };
 
