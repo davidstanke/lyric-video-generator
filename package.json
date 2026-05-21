@@ -1,0 +1,9 @@
+{
+  "name": "lyric-video-generator",
+  "version": "1.0.0",
+  "description": "Lyric Video Generator - A tool to automatically create lyric videos from audio and lyrics.",
+  "scripts": {
+    "start": "node start.js"
+  },
+  "private": true
+}

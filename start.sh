@@ -33,6 +33,13 @@ cleanup() {
 trap cleanup EXIT SIGINT SIGTERM
 
 
+# Check if SQLite database exists, and initialize if not
+if [ ! -f "storage/database.sqlite" ]; then
+  echo "--> SQLite database not found. Initializing storage/database.sqlite..."
+  mkdir -p storage/audio storage/video storage/subtitles
+  node -e "const { db } = require('./backend/database'); db.close();"
+fi
+
 # Start Backend
 echo "--> Starting Backend on port 3001 (Logging to logs/backend.log)..."
 cd backend

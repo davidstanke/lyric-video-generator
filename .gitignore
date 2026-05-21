@@ -1,4 +1,6 @@
 service-account-key.json
 logs/
 storage/
+*.sqlite
+*.db
 
