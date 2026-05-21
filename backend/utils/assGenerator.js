@@ -29,8 +29,8 @@ Style: Default,Arvo,54,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,1,0,0,0,100,1
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 `;
 
-  // Display song title if there is at least a 1-second gap before the first lyric segment
-  if (songTitle && manifest.length > 0 && manifest[0].startTime >= 1.0) {
+  // Display song title if there is at least a 0.1-second gap before the first lyric segment
+  if (songTitle && manifest.length > 0 && manifest[0].startTime >= 0.1) {
     const titleStart = formatAssTime(0);
     const titleEnd = formatAssTime(manifest[0].startTime);
     // Double font size: 54pt * 2 = 108pt. Remove fade-in, keep 300ms fade-out transition. Wrap in smart quotes.
