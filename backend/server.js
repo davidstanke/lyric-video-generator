@@ -396,7 +396,7 @@ app.post('/api/projects/:id/render', async (req, res) => {
       return res.status(404).json({ error: 'Audio file not found on disk' });
     }
 
-    const assContent = generateAss(manifest);
+    const assContent = generateAss(manifest, project.name);
     const assFilename = `subtitles_${Date.now()}.ass`;
     const assPath = path.join(storageDir, 'subtitles', assFilename);
     fs.writeFileSync(assPath, assContent);
