@@ -21,6 +21,51 @@ function EditorPage() {
   const [currentTime, setCurrentTime] = useState(0);
   const audioRef = useRef(null);
 
+  // Sticky state for player
+  const [isScrolled, setIsScrolled] = useState(false);
+
+  // Scroll listener to toggle sticky mode
+  useEffect(() => {
+    const handleScroll = () => {
+      // Toggle sticky state if scrolled past 140px
+      if (window.scrollY > 140) {
+        setIsScrolled(true);
+      } else {
+        setIsScrolled(false);
+      }
+    };
+
+    window.addEventListener('scroll', handleScroll);
+    return () => {
+      window.removeEventListener('scroll', handleScroll);
+    };
+  }, []);
+
+  // Global keyboard shortcut listener
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      // Toggle play/pause on Alt/Option + Space or Ctrl + Space
+      const isAltSpace = e.altKey && e.code === 'Space';
+      const isCtrlSpace = e.ctrlKey && e.code === 'Space';
+
+      if ((isAltSpace || isCtrlSpace) && audioRef.current) {
+        e.preventDefault(); // Prevent scrolling page or adding spaces in inputs
+        if (audioRef.current.paused) {
+          audioRef.current.play().catch(err => {
+            console.error('Failed to play audio via shortcut:', err);
+          });
+        } else {
+          audioRef.current.pause();
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, []);
+
   useEffect(() => {
     const fetchProject = async () => {
       setIsLoading(true);
@@ -119,7 +164,34 @@ function EditorPage() {
   const setTimeToCurrent = (segId, field) => {
     if (!audioRef.current) return;
     const time = parseFloat(audioRef.current.currentTime.toFixed(1));
+    
+    if (field === 'endTime') {
+      const index = manifest.findIndex(seg => seg.id === segId);
+      if (index !== -1 && index < manifest.length - 1) {
+        const nextSegment = manifest[index + 1];
+        if (nextSegment.startTime === 0) {
+          setManifest(manifest.map((seg, i) => {
+            if (seg.id === segId) {
+              return { ...seg, endTime: time };
+            } else if (i === index + 1) {
+              return { ...seg, startTime: time };
+            }
+            return seg;
+          }));
+          return;
+        }
+      }
+    }
+    
     handleTimeChange(segId, field, time);
+  };
+
+  const handleJumpToSegment = (startTime) => {
+    if (!audioRef.current) return;
+    audioRef.current.currentTime = startTime;
+    audioRef.current.play().catch(err => {
+      console.error('Failed to play audio on jump:', err);
+    });
   };
 
   if (isLoading) {
@@ -295,29 +367,21 @@ function EditorPage() {
       )}
 
       {/* Integrated Audio Player */}
-      <div className="audio-player-container" style={{
-        background: 'rgba(255, 255, 255, 0.03)',
-        border: '1px solid var(--glass-border)',
-        borderRadius: '12px',
-        padding: '1rem',
-        marginBottom: '2rem',
-        display: 'flex',
-        flexDirection: 'column',
-        gap: '0.5rem'
-      }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)', fontWeight: '600' }}>Audio Reference Player</span>
-          <span style={{ fontSize: '0.85rem', color: 'var(--accent-light)', fontFamily: 'monospace', fontWeight: 'bold' }}>
-            Current Time: {currentTime.toFixed(1)}s
-          </span>
+      <div className={`audio-player-container ${isScrolled ? 'is-sticky' : ''}`}>
+        <div className="audio-player-inner">
+          <div className="audio-player-meta">
+            <span className="audio-player-title-badge">Audio Reference Player</span>
+            <span className="audio-player-time">
+              Current Time: {currentTime.toFixed(1)}s
+            </span>
+          </div>
+          <audio 
+            ref={audioRef}
+            src={project.audioUrl} 
+            controls 
+            onTimeUpdate={handleTimeUpdate}
+          />
         </div>
-        <audio 
-          ref={audioRef}
-          src={project.audioUrl} 
-          controls 
-          onTimeUpdate={handleTimeUpdate}
-          style={{ width: '100%', borderRadius: '8px' }}
-        />
       </div>
 
       {error && (
@@ -327,7 +391,8 @@ function EditorPage() {
       )}
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '120px 120px 1fr 40px', gap: '1rem', padding: '0 1rem', color: 'var(--text-muted)', fontSize: '0.9rem', fontWeight: 'bold' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '40px 120px 120px 1fr 40px', gap: '1rem', padding: '0 1rem', color: 'var(--text-muted)', fontSize: '0.9rem', fontWeight: 'bold' }}>
+          <div></div>
           <div>Start (s)</div>
           <div>End (s)</div>
           <div>Lyric Text</div>
@@ -349,7 +414,7 @@ function EditorPage() {
               key={segment.id} 
               style={{ 
                 display: 'grid', 
-                gridTemplateColumns: '120px 120px 1fr 40px', 
+                gridTemplateColumns: '40px 120px 120px 1fr 40px', 
                 gap: '1rem', 
                 alignItems: 'center', 
                 background: isActive ? 'rgba(139, 92, 246, 0.12)' : 'rgba(0,0,0,0.2)', 
@@ -361,6 +426,46 @@ function EditorPage() {
                 transition: 'all 0.2s ease-in-out'
               }}
             >
+              <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+                <button
+                  onClick={() => handleJumpToSegment(segment.startTime)}
+                  style={{
+                    background: isActive ? 'var(--accent)' : 'rgba(255, 255, 255, 0.05)',
+                    border: '1px solid',
+                    borderColor: isActive ? 'var(--accent-light)' : 'var(--glass-border)',
+                    color: isActive ? '#fff' : 'var(--text-muted)',
+                    borderRadius: '50%',
+                    width: '32px',
+                    height: '32px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s ease',
+                    boxShadow: isActive ? '0 0 8px rgba(139, 92, 246, 0.4)' : 'none'
+                  }}
+                  onMouseOver={(e) => {
+                    if (!isActive) {
+                      e.currentTarget.style.background = 'rgba(139, 92, 246, 0.15)';
+                      e.currentTarget.style.borderColor = 'var(--accent-light)';
+                      e.currentTarget.style.color = 'var(--accent-light)';
+                    }
+                  }}
+                  onMouseOut={(e) => {
+                    if (!isActive) {
+                      e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)';
+                      e.currentTarget.style.borderColor = 'var(--glass-border)';
+                      e.currentTarget.style.color = 'var(--text-muted)';
+                    }
+                  }}
+                  title="Seek player to segment start"
+                >
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" stroke="none" style={{ marginLeft: '1px' }}>
+                    <polygon points="5 3 19 12 5 21 5 3"></polygon>
+                  </svg>
+                </button>
+              </div>
+
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
                 <input 
                   type="number" 

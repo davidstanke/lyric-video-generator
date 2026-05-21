@@ -210,6 +210,101 @@ audio::-webkit-media-controls-mute-button {
   filter: invert(1) hue-rotate(180deg);
 }
 
+/* Sticky and Compact Audio Player Styles */
+.audio-player-container {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--glass-border);
+  border-radius: 12px;
+  padding: 1rem;
+  margin-bottom: 2rem;
+  width: 100%;
+  box-sizing: border-box;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.audio-player-container.is-sticky {
+  position: sticky;
+  top: 54px; /* Pins nicely below the site-navbar */
+  z-index: 95;
+  background: rgba(15, 17, 26, 0.85);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-color: var(--accent-light);
+  box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.5), 0 0 15px rgba(139, 92, 246, 0.2);
+  padding: 0.75rem 1.25rem;
+  margin-bottom: 2.5rem;
+}
+
+.audio-player-inner {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  transition: all 0.3s ease;
+}
+
+.audio-player-container.is-sticky .audio-player-inner {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.5rem;
+}
+
+.audio-player-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  transition: all 0.3s ease;
+}
+
+.audio-player-container.is-sticky .audio-player-meta {
+  flex-direction: row;
+  justify-content: flex-start;
+  gap: 1rem;
+  align-items: center;
+}
+
+.audio-player-title-badge {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  font-weight: 600;
+  transition: all 0.3s ease;
+}
+
+.audio-player-container.is-sticky .audio-player-title-badge {
+  font-size: 0.75rem;
+  background: rgba(139, 92, 246, 0.15);
+  color: var(--accent-light);
+  padding: 0.25rem 0.5rem;
+  border-radius: 6px;
+  border: 1px solid rgba(139, 92, 246, 0.25);
+  white-space: nowrap;
+}
+
+.audio-player-time {
+  font-size: 0.85rem;
+  color: var(--accent-light);
+  font-family: monospace;
+  font-weight: bold;
+  transition: all 0.3s ease;
+}
+
+.audio-player-container.is-sticky .audio-player-time {
+  font-size: 0.8rem;
+  color: #f8fafc;
+}
+
+.audio-player-container audio {
+  width: 100%;
+  border-radius: 8px;
+  transition: all 0.3s ease;
+}
+
+.audio-player-container.is-sticky audio {
+  height: 32px;
+  flex: 1;
+}
+
+
 /* Project Row Hover Glow */
 .project-row:hover {
   box-shadow: 0 8px 20px rgba(139, 92, 246, 0.15);
