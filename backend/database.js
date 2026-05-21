@@ -44,6 +44,26 @@ function initializeDatabase() {
         console.error('Error creating projects table:', err.message);
       } else {
         console.log('Database tables initialized successfully.');
+        
+        // Run schema migration to add background_color column if missing
+        db.all("PRAGMA table_info(projects)", (pragmaErr, columns) => {
+          if (pragmaErr) {
+            console.error('Error reading projects table schema:', pragmaErr.message);
+            return;
+          }
+          if (columns) {
+            const hasBgColor = columns.some(col => col.name === 'background_color');
+            if (!hasBgColor) {
+              db.run("ALTER TABLE projects ADD COLUMN background_color TEXT DEFAULT '#0f111a'", (alterErr) => {
+                if (alterErr) {
+                  console.error('Error adding background_color column:', alterErr.message);
+                } else {
+                  console.log('Successfully added background_color column with default value.');
+                }
+              });
+            }
+          }
+        });
       }
     });
   });
