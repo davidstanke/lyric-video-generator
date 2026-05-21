@@ -391,3 +391,139 @@ audio::-webkit-media-controls-mute-button {
   color: #fff;
   box-shadow: 0 0 15px rgba(139, 92, 246, 0.4);
 }
+
+/* Segmented Tabs Control Styles */
+.segmented-tabs-container {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 2rem;
+  width: 100%;
+}
+
+.segmented-tabs {
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid var(--glass-border);
+  border-radius: 30px;
+  padding: 0.3rem;
+  display: flex;
+  gap: 0.2rem;
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.3);
+  max-width: 480px;
+  width: 100%;
+}
+
+.segmented-tab {
+  flex: 1;
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  padding: 0.6rem 1.2rem;
+  border-radius: 25px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.segmented-tab:hover {
+  color: var(--text-main);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.segmented-tab.active {
+  background: var(--accent);
+  color: #fff;
+  box-shadow: 0 4px 12px rgba(109, 40, 217, 0.35);
+}
+
+/* Raw SRT Textarea Editor Styles */
+.raw-srt-container {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  width: 100%;
+}
+
+.raw-srt-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--glass-border);
+  padding: 0.75rem 1.25rem;
+  border-radius: 10px;
+}
+
+.raw-srt-tips {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.raw-srt-tip-badge {
+  font-size: 0.75rem;
+  background: rgba(139, 92, 246, 0.15);
+  color: var(--accent-light);
+  padding: 0.15rem 0.4rem;
+  border-radius: 4px;
+  font-weight: bold;
+  align-self: flex-start;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.raw-srt-tip-text {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+.raw-srt-tip-text code {
+  background: rgba(0, 0, 0, 0.3);
+  padding: 0.1rem 0.3rem;
+  border-radius: 4px;
+  font-family: monospace;
+  color: #a78bfa;
+}
+
+.raw-srt-textarea {
+  width: 100%;
+  height: 480px;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid var(--glass-border);
+  border-radius: 12px;
+  color: var(--text-main);
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 0.95rem;
+  line-height: 1.5;
+  padding: 1.25rem;
+  resize: vertical;
+  transition: all 0.3s ease;
+  outline: none;
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.4);
+}
+
+.raw-srt-textarea:focus {
+  border-color: var(--accent-light);
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.4), 0 0 15px rgba(139, 92, 246, 0.25);
+}
+
+/* Validation Alert Banner Styles */
+.validation-alert-banner {
+  background: rgba(239, 68, 68, 0.12);
+  border: 1px solid rgba(239, 68, 68, 0.35);
+  padding: 1rem 1.25rem;
+  border-radius: 10px;
+  box-shadow: 0 4px 20px rgba(239, 68, 68, 0.15);
+  animation: fadeIn 0.3s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+.revert-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none !important;
+  background: transparent !important;
+}
