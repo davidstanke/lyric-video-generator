@@ -96,7 +96,26 @@ app.post('/api/projects', upload.single('audio'), async (req, res) => {
       return res.status(400).json({ error: 'No audio file provided' });
     }
 
-    const filePath = req.file.path;
+    let filePath = req.file.path;
+    const originalExt = path.extname(req.file.originalname).toLowerCase();
+
+    // If the file is not an MP3, transcode it to MP3
+    if (originalExt !== '.mp3') {
+      const mp3Path = filePath.replace(path.extname(filePath), '.mp3');
+      console.log(`Transcoding non-MP3 file (${originalExt}) to MP3: ${mp3Path}`);
+      try {
+        execSync(`ffmpeg -i "${filePath}" -codec:a libmp3lame -qscale:a 2 "${mp3Path}"`);
+        // Delete original non-MP3 file immediately
+        try { fs.unlinkSync(filePath); } catch (e) {}
+        filePath = mp3Path;
+      } catch (transcodeErr) {
+        console.error('Transcoding to MP3 failed:', transcodeErr);
+        // Clean up original uploaded file on error
+        try { fs.unlinkSync(filePath); } catch (e) {}
+        return res.status(500).json({ error: 'Failed to process audio format', details: transcodeErr.message });
+      }
+    }
+
     const totalDuration = getAudioDuration(filePath);
     console.log(`Processing file: ${req.file.originalname} (Duration: ${totalDuration.toFixed(1)}s)`);
 
