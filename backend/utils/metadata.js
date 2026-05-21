@@ -24,6 +24,58 @@ function probeAudio(filePath) {
 }
 
 /**
+ * Helper to clean up titles, removing artifact suffixes (duplicates, copy numbers, quality tags, etc.)
+ * @param {string} name - The raw string to clean
+ * @param {boolean} isMetadata - If true, applies less aggressive cleaning (preserves tags like (Remix))
+ * @returns {string} Cleaned name
+ */
+function cleanName(name, isMetadata = false) {
+  if (!name) return '';
+  
+  let cleaned = name;
+
+  if (!isMetadata) {
+    // Strip extension (e.g. .mp3, .wav, .m4a)
+    const extIdx = cleaned.lastIndexOf('.');
+    if (extIdx !== -1) {
+      cleaned = cleaned.substring(0, extIdx);
+    }
+
+    // Remove common leading patterns (e.g., track numbers like "01 - ", "12. ", "05 ")
+    cleaned = cleaned.replace(/^\d+[\s.-]+/, '');
+  }
+
+  // Replace underscores and multiple dashes with spaces
+  cleaned = cleaned.replace(/_/g, ' ');
+  cleaned = cleaned.replace(/-+/g, '-');
+
+  // Strip duplicate/copy suffixes like (1), [1], (copy), (copy 1), - Copy
+  cleaned = cleaned.replace(/\s*[([（【]\s*(copy|copy\s+\d+|\d+)\s*[)\]）】]\s*$/gi, '');
+  cleaned = cleaned.replace(/\s*-\s*copy\s*$/gi, '');
+
+  if (!isMetadata) {
+    // Strip common video/audio suffixes in brackets or parentheses like (Official Video), (Lyrics), (Audio), [HQ], [HD]
+    cleaned = cleaned.replace(/\s*[([（【]\s*(official\s+(video|audio|lyric\s+video|music\s+video)|lyric\s+video|official|lyrics|hq|hd|remix|cover|128kbps|320kbps)\s*[)\]）】]\s*$/gi, '');
+    
+    // Strip trailing hyphens followed by quality / extra attributes (e.g. - 128kbps)
+    cleaned = cleaned.replace(/\s*-\s*(128kbps|320kbps|official\s+video|official\s+audio|lyrics|hq|hd|remix|cover)\s*$/gi, '');
+  }
+
+  // Clean up trailing and leading dashes, underscores, and extra spacing
+  cleaned = cleaned.replace(/^[\s-_]+|[\s-_]+$/g, '');
+  cleaned = cleaned.replace(/\s+/g, ' ').trim();
+
+  // Ensure the first character is capitalized if it's a letter
+  if (cleaned.length > 0) {
+    cleaned = cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
+  } else {
+    cleaned = 'Untitled Track';
+  }
+
+  return cleaned;
+}
+
+/**
  * Guesses a high-quality song title based on ffprobe tags or a cleaned file name fallback.
  * @param {string} filePath - Absolute path to the file on disk
  * @param {string} originalName - Original name of the uploaded file (e.g. from req.file.originalname)
@@ -37,15 +89,19 @@ function guessTitle(filePath, originalName) {
   const titleKey = keys.find(k => k.toLowerCase() === 'title');
   const artistKey = keys.find(k => k.toLowerCase() === 'artist');
   
-  const titleVal = titleKey ? tags[titleKey].trim() : '';
-  const artistVal = artistKey ? tags[artistKey].trim() : '';
+  let titleVal = titleKey ? tags[titleKey].trim() : '';
+  let artistVal = artistKey ? tags[artistKey].trim() : '';
   
   if (titleVal && artistVal) {
+    // Clean metadata tags from duplicates like (1)
+    titleVal = cleanName(titleVal, true);
+    artistVal = cleanName(artistVal, true);
     return {
       guessedTitle: `${artistVal} - ${titleVal}`,
       duration
     };
   } else if (titleVal) {
+    titleVal = cleanName(titleVal, true);
     return {
       guessedTitle: titleVal,
       duration
@@ -54,33 +110,10 @@ function guessTitle(filePath, originalName) {
   
   // 2. Fallback: Clean up the original file name
   const nameToClean = originalName || path.basename(filePath);
-  let name = nameToClean;
-  
-  // Strip extension (e.g. .mp3, .wav)
-  const extIdx = name.lastIndexOf('.');
-  if (extIdx !== -1) {
-    name = name.substring(0, extIdx);
-  }
-  
-  // Remove common leading patterns (e.g., track numbers like "01 - ", "12. ", "05 ")
-  name = name.replace(/^\d+[\s.-]+/, '');
-  
-  // Replace underscores and multiple dashes with spaces
-  name = name.replace(/_/g, ' ');
-  name = name.replace(/-+/g, '-'); // keep single hyphens for artist-title splits, but clean up spacing
-  
-  // Clean up excess white space
-  name = name.replace(/\s+/g, ' ').trim();
-  
-  // Ensure the first character is capitalized if it's a letter
-  if (name.length > 0) {
-    name = name.charAt(0).toUpperCase() + name.slice(1);
-  } else {
-    name = 'Untitled Track';
-  }
+  const cleanedFileTitle = cleanName(nameToClean, false);
   
   return {
-    guessedTitle: name,
+    guessedTitle: cleanedFileTitle,
     duration
   };
 }
