@@ -8,6 +8,32 @@ echo "Starting Lyric Video Generator Services..."
 # Create logs directory if it doesn't exist
 mkdir -p logs
 
+# Enforce Google Cloud Service Account Key presence
+KEY_EXISTS=0
+if [ -f "service-account-key.json" ]; then
+  KEY_EXISTS=1
+elif [ -n "$GOOGLE_APPLICATION_CREDENTIALS" ] && [ -f "$GOOGLE_APPLICATION_CREDENTIALS" ]; then
+  KEY_EXISTS=1
+fi
+
+if [ "$KEY_EXISTS" -eq 0 ]; then
+  echo -e "\033[1;31m❌ ERROR: Google Cloud Service Account Key is missing!\033[0m"
+  echo "--------------------------------------------------------"
+  echo "Automatic lyric generation requires a Google Cloud Service Account"
+  echo "with the Cloud Speech-to-Text API enabled."
+  echo ""
+  echo "How to get a key:"
+  echo "  1. Go to Google Cloud Console (https://console.cloud.google.com)"
+  echo "  2. Enable the 'Cloud Speech-to-Text API' for your project."
+  echo "  3. Go to 'IAM & Admin' -> 'Service Accounts' and create a Service Account."
+  echo "  4. Grant the Service Account appropriate access (e.g., 'Project Owner/Editor' or 'Speech-to-Text' specific roles)."
+  echo "  5. Go to the 'Keys' tab, click 'Add Key' -> 'Create new key', select JSON format, and download the key file."
+  echo "  6. Save the downloaded file as 'service-account-key.json' in this folder:"
+  echo "     $(pwd)/service-account-key.json"
+  echo "--------------------------------------------------------"
+  exit 1
+fi
+
 # Initialize PID trackers for cleanup
 BACKEND_PID=""
 FRONTEND_PID=""

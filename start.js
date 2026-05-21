@@ -4,6 +4,29 @@ const path = require('path');
 
 console.log("\x1b[1;36mStarting Lyric Video Generator Services...\x1b[0m");
 
+// Enforce Google Cloud Service Account Key presence
+const keyPath = path.join(__dirname, 'service-account-key.json');
+const envKeyPath = process.env.GOOGLE_APPLICATION_CREDENTIALS;
+const hasKey = fs.existsSync(keyPath) || (envKeyPath && fs.existsSync(envKeyPath));
+
+if (!hasKey) {
+  console.error("\x1b[1;31m❌ ERROR: Google Cloud Service Account Key is missing!\x1b[0m");
+  console.error("--------------------------------------------------------");
+  console.error("Automatic lyric generation requires a Google Cloud Service Account");
+  console.error("with the Cloud Speech-to-Text API enabled.");
+  console.error("");
+  console.error("How to get a key:");
+  console.error("  1. Go to Google Cloud Console (https://console.cloud.google.com)");
+  console.error("  2. Enable the 'Cloud Speech-to-Text API' for your project.");
+  console.error("  3. Go to 'IAM & Admin' -> 'Service Accounts' and create a Service Account.");
+  console.error("  4. Grant the Service Account appropriate access (e.g., 'Project Owner/Editor' or 'Speech-to-Text' specific roles).");
+  console.error("  5. Go to the 'Keys' tab, click 'Add Key' -> 'Create new key', select JSON format, and download the key file.");
+  console.error("  6. Save the downloaded file as 'service-account-key.json' in this folder:");
+  console.error(`     ${keyPath}`);
+  console.error("--------------------------------------------------------");
+  process.exit(1);
+}
+
 // Ensure logs directory exists
 const logsDir = path.join(__dirname, 'logs');
 if (!fs.existsSync(logsDir)) {
