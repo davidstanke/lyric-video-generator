@@ -133,6 +133,23 @@ function EditorPage() {
   const [validationError, setValidationError] = useState(null);
   const [isRawDirty, setIsRawDirty] = useState(false);
   
+  // Background color customization
+  const [backgroundColor, setBackgroundColor] = useState('#0f111a');
+  const [isSavingColor, setIsSavingColor] = useState(false);
+
+  const handleColorChange = async (color) => {
+    setBackgroundColor(color);
+    setIsSavingColor(true);
+    try {
+      await axios.put(`/api/projects/${id}/background-color`, { backgroundColor: color });
+    } catch (err) {
+      console.error('Failed to save background color:', err);
+      setError('Failed to auto-save background color selection.');
+    } finally {
+      setIsSavingColor(false);
+    }
+  };
+  
   // Custom toast and confirm modal states
   const [toast, setToast] = useState(null);
   const [confirmModal, setConfirmModal] = useState(null);
@@ -212,6 +229,7 @@ function EditorPage() {
         setProject(response.data);
         setManifest(response.data.manifest || []);
         setEditedTitle(response.data.name || '');
+        setBackgroundColor(response.data.background_color || '#0f111a');
       } catch (err) {
         console.error(err);
         setError('Failed to load project details. Make sure the backend is running.');
@@ -566,6 +584,123 @@ function EditorPage() {
         <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', margin: 0 }}>
           Original Audio Path: <code style={{ background: 'rgba(255,255,255,0.05)', padding: '0.1rem 0.3rem', borderRadius: '4px', wordBreak: 'break-all' }}>{project.audio_path}</code>
         </p>
+      </div>
+
+      {/* Video Styling Panel */}
+      <div className="styling-panel animate-fade-in" style={{
+        background: 'rgba(255, 255, 255, 0.03)',
+        border: '1px solid var(--glass-border)',
+        borderRadius: '12px',
+        padding: '1.25rem 1.5rem',
+        marginBottom: '1.5rem',
+        boxShadow: 'inset 0 1px 1px rgba(255, 255, 255, 0.05)'
+      }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
+          <div>
+            <h4 style={{ margin: '0 0 0.25rem 0', display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '1rem' }}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: 'var(--accent-light)' }}>
+                <circle cx="12" cy="12" r="10"></circle>
+                <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
+                <path d="M2 12h20"></path>
+              </svg>
+              Video Style & Design
+            </h4>
+            <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+              Choose a background color for the video. Overlay lyrics will render in white.
+            </p>
+          </div>
+          
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+            {/* Curated Dark Presets */}
+            {[
+              { color: '#0f111a', label: 'Space Indigo' },
+              { color: '#000000', label: 'Obsidian Black' },
+              { color: '#0b1528', label: 'Midnight Navy' },
+              { color: '#2a080c', label: 'Burgundy Wine' },
+              { color: '#021b11', label: 'Forest Zen' },
+              { color: '#1d0d24', label: 'Plum Dream' }
+            ].map((p) => {
+              const isActive = backgroundColor.toLowerCase() === p.color.toLowerCase();
+              return (
+                <button
+                  key={p.color}
+                  onClick={() => handleColorChange(p.color)}
+                  style={{
+                    width: '32px',
+                    height: '32px',
+                    borderRadius: '50%',
+                    backgroundColor: p.color,
+                    border: isActive ? '2px solid #fff' : '2px solid rgba(255,255,255,0.1)',
+                    boxShadow: isActive ? `0 0 12px ${p.color}` : 'none',
+                    cursor: 'pointer',
+                    transition: 'transform 0.2s, border-color 0.2s, box-shadow 0.2s',
+                    position: 'relative',
+                    padding: 0
+                  }}
+                  onMouseOver={(e) => {
+                    e.currentTarget.style.transform = 'scale(1.15)';
+                    if (!isActive) e.currentTarget.style.borderColor = 'rgba(255,255,255,0.5)';
+                  }}
+                  onMouseOut={(e) => {
+                    e.currentTarget.style.transform = isActive ? 'scale(1)' : 'scale(1)';
+                    if (!isActive) e.currentTarget.style.borderColor = 'rgba(255,255,255,0.1)';
+                  }}
+                  title={p.label}
+                />
+              );
+            })}
+
+            {/* Custom Infinite Color Picker Pill */}
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              background: 'rgba(0,0,0,0.2)',
+              border: '1px solid var(--glass-border)',
+              borderRadius: '20px',
+              padding: '0.25rem 0.6rem 0.25rem 0.35rem',
+              gap: '0.5rem',
+              height: '32px',
+              boxSizing: 'border-box'
+            }}>
+              <div style={{
+                position: 'relative',
+                width: '20px',
+                height: '20px',
+                borderRadius: '50%',
+                overflow: 'hidden',
+                border: '1px solid rgba(255,255,255,0.2)'
+              }}>
+                <input
+                  type="color"
+                  value={backgroundColor}
+                  onChange={(e) => handleColorChange(e.target.value)}
+                  style={{
+                    position: 'absolute',
+                    top: '-5px',
+                    left: '-5px',
+                    width: '30px',
+                    height: '30px',
+                    border: 'none',
+                    padding: 0,
+                    margin: 0,
+                    cursor: 'pointer',
+                    background: 'none'
+                  }}
+                  title="Custom Color Picker"
+                />
+              </div>
+              <span style={{ fontSize: '0.75rem', fontFamily: 'monospace', fontWeight: 'bold', color: 'var(--text-muted)' }}>
+                {backgroundColor.toUpperCase()}
+              </span>
+            </div>
+
+            {isSavingColor && (
+              <span className="animate-pulse" style={{ fontSize: '0.75rem', color: 'var(--accent-light)', fontWeight: 'bold', marginLeft: '0.25rem' }}>
+                Saving...
+              </span>
+            )}
+          </div>
+        </div>
       </div>
 
       {isManual && (

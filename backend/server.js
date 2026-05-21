@@ -10,6 +10,7 @@ const { generateAss } = require('./utils/assGenerator');
 const { execSync } = require('child_process');
 const { dbQuery, storageDir } = require('./database');
 const { guessTitle } = require('./utils/metadata');
+const { classifyLyrics } = require('./utils/themeClassifier');
 
 const app = express();
 const port = process.env.PORT || 3001;
@@ -296,10 +297,19 @@ app.post('/api/projects', async (req, res) => {
 
     const projectName = title.trim();
     
+    // Determine suggested thematic background color using lyrics analysis
+    let suggestedColor = '#0f111a';
+    try {
+      const themeResult = await classifyLyrics(manifest);
+      suggestedColor = themeResult.backgroundColor || '#0f111a';
+    } catch (themeError) {
+      console.error('Failed to classify lyrics:', themeError);
+    }
+
     // Save project in SQLite database
     const insertResult = await dbQuery.run(
-      'INSERT INTO projects (name, audio_path, manifest) VALUES (?, ?, ?)',
-      [projectName, filePath, JSON.stringify(manifest)]
+      'INSERT INTO projects (name, audio_path, manifest, background_color) VALUES (?, ?, ?, ?)',
+      [projectName, filePath, JSON.stringify(manifest), suggestedColor]
     );
 
     res.json({
@@ -307,7 +317,8 @@ app.post('/api/projects', async (req, res) => {
       name: projectName,
       audioPath: filePath,
       manifest: manifest,
-      transcriptionStatus: transcriptionStatus
+      transcriptionStatus: transcriptionStatus,
+      backgroundColor: suggestedColor
     });
 
   } catch (error) {
@@ -381,6 +392,32 @@ app.put('/api/projects/:id/rename', async (req, res) => {
   }
 });
 
+// 4c. PUT /api/projects/:id/background-color - Update background color
+app.put('/api/projects/:id/background-color', async (req, res) => {
+  try {
+    const { backgroundColor } = req.body;
+    if (!backgroundColor || !backgroundColor.trim()) {
+      return res.status(400).json({ error: 'Background color is required' });
+    }
+
+    // Check project exists
+    const project = await dbQuery.get('SELECT id FROM projects WHERE id = ?', [req.params.id]);
+    if (!project) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+
+    await dbQuery.run(
+      'UPDATE projects SET background_color = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+      [backgroundColor.trim(), req.params.id]
+    );
+
+    res.json({ success: true, backgroundColor: backgroundColor.trim() });
+  } catch (error) {
+    console.error('Error updating background color:', error);
+    res.status(500).json({ error: 'Failed to update background color' });
+  }
+});
+
 // 5. POST /api/projects/:id/render - Render video
 app.post('/api/projects/:id/render', async (req, res) => {
   try {
@@ -429,8 +466,12 @@ app.post('/api/projects/:id/render', async (req, res) => {
       });
     };
 
+    const rawBgColor = project.background_color || '#0f111a';
+    const cleanBgColor = rawBgColor.startsWith('#') ? rawBgColor.replace('#', '0x') : rawBgColor;
+    console.log(`Rendering video with background color: ${rawBgColor} (${cleanBgColor})`);
+
     command
-      .input('color=c=black:s=1280x720')
+      .input(`color=c=${cleanBgColor}:s=1280x720`)
       .inputFormat('lavfi')
       .input(audioPath)
       .outputOptions(['-shortest'])
