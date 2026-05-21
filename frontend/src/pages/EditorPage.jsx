@@ -167,6 +167,14 @@ function EditorPage() {
     handleTimeChange(segId, field, time);
   };
 
+  const handleJumpToSegment = (startTime) => {
+    if (!audioRef.current) return;
+    audioRef.current.currentTime = startTime;
+    audioRef.current.play().catch(err => {
+      console.error('Failed to play audio on jump:', err);
+    });
+  };
+
   if (isLoading) {
     return (
       <div className="glass-panel animate-fade-in" style={{ textAlign: 'center', padding: '4rem 2rem' }}>
@@ -364,7 +372,8 @@ function EditorPage() {
       )}
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '120px 120px 1fr 40px', gap: '1rem', padding: '0 1rem', color: 'var(--text-muted)', fontSize: '0.9rem', fontWeight: 'bold' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '40px 120px 120px 1fr 40px', gap: '1rem', padding: '0 1rem', color: 'var(--text-muted)', fontSize: '0.9rem', fontWeight: 'bold' }}>
+          <div></div>
           <div>Start (s)</div>
           <div>End (s)</div>
           <div>Lyric Text</div>
@@ -386,7 +395,7 @@ function EditorPage() {
               key={segment.id} 
               style={{ 
                 display: 'grid', 
-                gridTemplateColumns: '120px 120px 1fr 40px', 
+                gridTemplateColumns: '40px 120px 120px 1fr 40px', 
                 gap: '1rem', 
                 alignItems: 'center', 
                 background: isActive ? 'rgba(139, 92, 246, 0.12)' : 'rgba(0,0,0,0.2)', 
@@ -398,6 +407,46 @@ function EditorPage() {
                 transition: 'all 0.2s ease-in-out'
               }}
             >
+              <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+                <button
+                  onClick={() => handleJumpToSegment(segment.startTime)}
+                  style={{
+                    background: isActive ? 'var(--accent)' : 'rgba(255, 255, 255, 0.05)',
+                    border: '1px solid',
+                    borderColor: isActive ? 'var(--accent-light)' : 'var(--glass-border)',
+                    color: isActive ? '#fff' : 'var(--text-muted)',
+                    borderRadius: '50%',
+                    width: '32px',
+                    height: '32px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s ease',
+                    boxShadow: isActive ? '0 0 8px rgba(139, 92, 246, 0.4)' : 'none'
+                  }}
+                  onMouseOver={(e) => {
+                    if (!isActive) {
+                      e.currentTarget.style.background = 'rgba(139, 92, 246, 0.15)';
+                      e.currentTarget.style.borderColor = 'var(--accent-light)';
+                      e.currentTarget.style.color = 'var(--accent-light)';
+                    }
+                  }}
+                  onMouseOut={(e) => {
+                    if (!isActive) {
+                      e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)';
+                      e.currentTarget.style.borderColor = 'var(--glass-border)';
+                      e.currentTarget.style.color = 'var(--text-muted)';
+                    }
+                  }}
+                  title="Seek player to segment start"
+                >
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" stroke="none" style={{ marginLeft: '1px' }}>
+                    <polygon points="5 3 19 12 5 21 5 3"></polygon>
+                  </svg>
+                </button>
+              </div>
+
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
                 <input 
                   type="number" 
