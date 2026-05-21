@@ -2,6 +2,121 @@ import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import axios from 'axios';
 
+// SRT Utility Functions
+function formatTime(seconds) {
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = Math.floor(seconds % 60);
+  const ms = Math.round((seconds % 1) * 1000);
+  
+  const pad = (num, size = 2) => String(num).padStart(size, '0');
+  
+  return `${pad(h)}:${pad(m)}:${pad(s)},${pad(ms, 3)}`;
+}
+
+function stringifySrt(manifestList) {
+  return manifestList.map((seg, index) => {
+    const seq = index + 1;
+    const start = formatTime(seg.startTime);
+    const end = formatTime(seg.endTime);
+    return `${seq}\n${start} --> ${end}\n${seg.text || ''}`;
+  }).join('\n\n');
+}
+
+function parseSrtTime(timeStr) {
+  if (!timeStr) return 0;
+  const parts = timeStr.replace(',', '.').split(':');
+  if (parts.length === 3) {
+    const hours = parseInt(parts[0], 10) || 0;
+    const minutes = parseInt(parts[1], 10) || 0;
+    const seconds = parseFloat(parts[2]) || 0;
+    return parseFloat((hours * 3600 + minutes * 60 + seconds).toFixed(3));
+  } else if (parts.length === 2) {
+    const minutes = parseInt(parts[0], 10) || 0;
+    const seconds = parseFloat(parts[1]) || 0;
+    return parseFloat((minutes * 60 + seconds).toFixed(3));
+  } else {
+    return parseFloat(timeStr) || 0;
+  }
+}
+
+function parseSrt(srtText) {
+  const lines = srtText.split(/\r?\n/);
+  const segments = [];
+  let currentSeg = null;
+  let tempTextLines = [];
+  let nextId = 1;
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+    
+    // Detect timestamp line
+    if (line.includes('-->')) {
+      const timeMatch = line.match(/(\d{1,2}:\d{2}:\d{2}(?:[.,]\d{1,3})?)\s*-->\s*(\d{1,2}:\d{2}:\d{2}(?:[.,]\d{1,3})?)/);
+      if (!timeMatch) {
+        throw new Error(`Invalid timestamp format on line ${i + 1}: "${line}"`);
+      }
+
+      // Save previous segment
+      if (currentSeg) {
+        currentSeg.text = tempTextLines.join('\n').trim();
+        segments.push(currentSeg);
+        currentSeg = null;
+        tempTextLines = [];
+      }
+
+      // Check if previous line was a sequence number
+      let seq = nextId++;
+      if (i > 0) {
+        const prevLine = lines[i - 1].trim();
+        if (/^\d+$/.test(prevLine)) {
+          seq = parseInt(prevLine, 10);
+          if (segments.length > 0) {
+            const prevSegTextLines = segments[segments.length - 1].text.split('\n');
+            if (prevSegTextLines[prevSegTextLines.length - 1].trim() === prevLine) {
+              prevSegTextLines.pop();
+              segments[segments.length - 1].text = prevSegTextLines.join('\n').trim();
+            }
+          }
+        }
+      }
+
+      currentSeg = {
+        id: seq,
+        startTime: parseSrtTime(timeMatch[1]),
+        endTime: parseSrtTime(timeMatch[2]),
+        text: ''
+      };
+      continue;
+    }
+
+    if (currentSeg) {
+      tempTextLines.push(lines[i]);
+    }
+  }
+
+  if (currentSeg) {
+    currentSeg.text = tempTextLines.join('\n').trim();
+    segments.push(currentSeg);
+  }
+
+  // Strip trailing numbers
+  for (let j = 0; j < segments.length; j++) {
+    const seg = segments[j];
+    const segLines = seg.text.split(/\r?\n/);
+    if (segLines.length > 1 && /^\d+$/.test(segLines[segLines.length - 1].trim())) {
+      segLines.pop();
+      seg.text = segLines.join('\n').trim();
+    }
+  }
+
+  if (srtText.trim() && segments.length === 0) {
+    throw new Error('Could not parse any valid SRT segments. Check the formatting structure (sequence number, timestamp, and text block).');
+  }
+
+  return segments;
+}
+
 function EditorPage() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -11,6 +126,12 @@ function EditorPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [isRendering, setIsRendering] = useState(false);
   const [error, setError] = useState(null);
+
+  // Raw SRT editing state
+  const [editMode, setEditMode] = useState('table'); // 'table' or 'raw'
+  const [srtText, setSrtText] = useState('');
+  const [validationError, setValidationError] = useState(null);
+  const [isRawDirty, setIsRawDirty] = useState(false);
   
   // Title renaming state
   const [isEditingTitle, setIsEditingTitle] = useState(false);
@@ -124,15 +245,67 @@ function EditorPage() {
     }
   };
 
+  const handleSwitchToTable = () => {
+    if (editMode === 'table') return;
+    try {
+      const parsedManifest = parseSrt(srtText);
+      setManifest(parsedManifest);
+      setValidationError(null);
+      setIsRawDirty(false);
+      setEditMode('table');
+    } catch (err) {
+      setValidationError(err.message || 'Failed to parse SRT. Please check formatting.');
+    }
+  };
+
+  const handleSwitchToRaw = () => {
+    if (editMode === 'raw') return;
+    const rawSrt = stringifySrt(manifest);
+    setSrtText(rawSrt);
+    setValidationError(null);
+    setIsRawDirty(false);
+    setEditMode('raw');
+  };
+
+  const handleRawTextChange = (e) => {
+    const val = e.target.value;
+    setSrtText(val);
+    setIsRawDirty(true);
+    if (validationError) {
+      setValidationError(null);
+    }
+  };
+
+  const handleRevertRawChanges = () => {
+    if (window.confirm('Are you sure you want to discard your raw SRT edits?')) {
+      const rawSrt = stringifySrt(manifest);
+      setSrtText(rawSrt);
+      setValidationError(null);
+      setIsRawDirty(false);
+    }
+  };
+
   const handleSaveManifest = async () => {
     setIsSaving(true);
     setError(null);
+    setValidationError(null);
     try {
-      await axios.put(`/api/projects/${id}/manifest`, { manifest });
+      let activeManifest = manifest;
+      if (editMode === 'raw') {
+        activeManifest = parseSrt(srtText);
+        setManifest(activeManifest);
+        setIsRawDirty(false);
+      }
+      await axios.put(`/api/projects/${id}/manifest`, { manifest: activeManifest });
       alert('Manifest saved successfully!');
     } catch (err) {
       console.error(err);
-      setError(err.response?.data?.error || 'Failed to save manifest.');
+      if (err.message && !err.response) {
+        setValidationError(err.message);
+        setError('Please fix the SRT formatting errors before saving.');
+      } else {
+        setError(err.response?.data?.error || 'Failed to save manifest.');
+      }
     } finally {
       setIsSaving(false);
     }
@@ -141,17 +314,30 @@ function EditorPage() {
   const handleRender = async () => {
     setIsRendering(true);
     setError(null);
+    setValidationError(null);
 
     try {
+      let activeManifest = manifest;
+      if (editMode === 'raw') {
+        activeManifest = parseSrt(srtText);
+        setManifest(activeManifest);
+        setIsRawDirty(false);
+      }
+      
       // First auto-save the manifest to ensure the video has the latest edits
-      await axios.put(`/api/projects/${id}/manifest`, { manifest });
+      await axios.put(`/api/projects/${id}/manifest`, { manifest: activeManifest });
       
       await axios.post(`/api/projects/${id}/render`);
       
       navigate(`/projects/${id}/result`);
     } catch (err) {
       console.error(err);
-      setError(err.response?.data?.error || 'Failed to render video.');
+      if (err.message && !err.response) {
+        setValidationError(err.message);
+        setError('Please fix the SRT formatting errors before rendering.');
+      } else {
+        setError(err.response?.data?.error || 'Failed to render video.');
+      }
     } finally {
       setIsRendering(false);
     }
@@ -390,144 +576,227 @@ function EditorPage() {
         </div>
       )}
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '40px 120px 120px 1fr 40px', gap: '1rem', padding: '0 1rem', color: 'var(--text-muted)', fontSize: '0.9rem', fontWeight: 'bold' }}>
-          <div></div>
-          <div>Start (s)</div>
-          <div>End (s)</div>
-          <div>Lyric Text</div>
-          <div></div>
+      {/* Mode Segmented Tab Control */}
+      <div className="segmented-tabs-container">
+        <div className="segmented-tabs">
+          <button 
+            className={`segmented-tab ${editMode === 'table' ? 'active' : ''}`}
+            onClick={handleSwitchToTable}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: '6px' }}>
+              <line x1="8" y1="6" x2="21" y2="6"></line>
+              <line x1="8" y1="12" x2="21" y2="12"></line>
+              <line x1="8" y1="18" x2="21" y2="18"></line>
+              <line x1="3" y1="6" x2="3.01" y2="6"></line>
+              <line x1="3" y1="12" x2="3.01" y2="12"></line>
+              <line x1="3" y1="18" x2="3.01" y2="18"></line>
+            </svg>
+            Line-by-Line Editor
+          </button>
+          <button 
+            className={`segmented-tab ${editMode === 'raw' ? 'active' : ''}`}
+            onClick={handleSwitchToRaw}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: '6px' }}>
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+              <polyline points="14 2 14 8 20 8"></polyline>
+              <line x1="16" y1="13" x2="8" y2="13"></line>
+              <line x1="16" y1="17" x2="8" y2="17"></line>
+              <polyline points="10 9 9 9 8 9"></polyline>
+            </svg>
+            Raw SRT Editor
+          </button>
         </div>
+      </div>
 
-        {manifest.length === 0 && (
-          <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>
-            No lyric segments generated. Add one manually.
-            <br/><br/>
-            <button className="btn btn-secondary" onClick={() => handleAddSegment(-1)}>Add First Segment</button>
+      {editMode === 'table' ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '40px 120px 120px 1fr 40px', gap: '1rem', padding: '0 1rem', color: 'var(--text-muted)', fontSize: '0.9rem', fontWeight: 'bold' }}>
+            <div></div>
+            <div>Start (s)</div>
+            <div>End (s)</div>
+            <div>Lyric Text</div>
+            <div></div>
           </div>
-        )}
 
-        {manifest.map((segment, index) => {
-          const isActive = currentTime >= segment.startTime && currentTime <= segment.endTime;
-          return (
-            <div 
-              key={segment.id} 
-              style={{ 
-                display: 'grid', 
-                gridTemplateColumns: '40px 120px 120px 1fr 40px', 
-                gap: '1rem', 
-                alignItems: 'center', 
-                background: isActive ? 'rgba(139, 92, 246, 0.12)' : 'rgba(0,0,0,0.2)', 
-                padding: '0.85rem 1rem', 
-                borderRadius: '8px', 
-                border: '1px solid',
-                borderColor: isActive ? 'var(--accent-light)' : 'var(--glass-border)',
-                boxShadow: isActive ? '0 0 12px rgba(139, 92, 246, 0.2)' : 'none',
-                transition: 'all 0.2s ease-in-out'
-              }}
+          {manifest.length === 0 && (
+            <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>
+              No lyric segments generated. Add one manually.
+              <br/><br/>
+              <button className="btn btn-secondary" onClick={() => handleAddSegment(-1)}>Add First Segment</button>
+            </div>
+          )}
+
+          {manifest.map((segment, index) => {
+            const isActive = currentTime >= segment.startTime && currentTime <= segment.endTime;
+            return (
+              <div 
+                key={segment.id} 
+                style={{ 
+                  display: 'grid', 
+                  gridTemplateColumns: '40px 120px 120px 1fr 40px', 
+                  gap: '1rem', 
+                  alignItems: 'center', 
+                  background: isActive ? 'rgba(139, 92, 246, 0.12)' : 'rgba(0,0,0,0.2)', 
+                  padding: '0.85rem 1rem', 
+                  borderRadius: '8px', 
+                  border: '1px solid',
+                  borderColor: isActive ? 'var(--accent-light)' : 'var(--glass-border)',
+                  boxShadow: isActive ? '0 0 12px rgba(139, 92, 246, 0.2)' : 'none',
+                  transition: 'all 0.2s ease-in-out'
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+                  <button
+                    onClick={() => handleJumpToSegment(segment.startTime)}
+                    style={{
+                      background: isActive ? 'var(--accent)' : 'rgba(255, 255, 255, 0.05)',
+                      border: '1px solid',
+                      borderColor: isActive ? 'var(--accent-light)' : 'var(--glass-border)',
+                      color: isActive ? '#fff' : 'var(--text-muted)',
+                      borderRadius: '50%',
+                      width: '32px',
+                      height: '32px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      cursor: 'pointer',
+                      transition: 'all 0.2s ease',
+                      boxShadow: isActive ? '0 0 8px rgba(139, 92, 246, 0.4)' : 'none'
+                    }}
+                    onMouseOver={(e) => {
+                      if (!isActive) {
+                        e.currentTarget.style.background = 'rgba(139, 92, 246, 0.15)';
+                        e.currentTarget.style.borderColor = 'var(--accent-light)';
+                        e.currentTarget.style.color = 'var(--accent-light)';
+                      }
+                    }}
+                    onMouseOut={(e) => {
+                      if (!isActive) {
+                        e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)';
+                        e.currentTarget.style.borderColor = 'var(--glass-border)';
+                        e.currentTarget.style.color = 'var(--text-muted)';
+                      }
+                    }}
+                    title="Seek player to segment start"
+                  >
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" stroke="none" style={{ marginLeft: '1px' }}>
+                      <polygon points="5 3 19 12 5 21 5 3"></polygon>
+                    </svg>
+                  </button>
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                  <input 
+                    type="number" 
+                    step="0.1" 
+                    value={segment.startTime} 
+                    onChange={(e) => handleTimeChange(segment.id, 'startTime', e.target.value)} 
+                  />
+                  <button 
+                    className="btn btn-secondary"
+                    onClick={() => setTimeToCurrent(segment.id, 'startTime')}
+                    style={{ padding: '0.2rem', fontSize: '0.7rem', borderRadius: '4px', minHeight: 'auto', display: 'block', width: '100%', textTransform: 'uppercase', letterSpacing: '0.02em' }}
+                    title="Capture current audio time"
+                  >
+                    ⏱ Capture
+                  </button>
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                  <input 
+                    type="number" 
+                    step="0.1" 
+                    value={segment.endTime} 
+                    onChange={(e) => handleTimeChange(segment.id, 'endTime', e.target.value)} 
+                  />
+                  <button 
+                    className="btn btn-secondary"
+                    onClick={() => setTimeToCurrent(segment.id, 'endTime')}
+                    style={{ padding: '0.2rem', fontSize: '0.7rem', borderRadius: '4px', minHeight: 'auto', display: 'block', width: '100%', textTransform: 'uppercase', letterSpacing: '0.02em' }}
+                    title="Capture current audio time"
+                  >
+                    ⏱ Capture
+                  </button>
+                </div>
+
+                <input 
+                  type="text" 
+                  value={segment.text} 
+                  onChange={(e) => handleTextChange(segment.id, e.target.value)} 
+                  placeholder="Enter lyric sentence..."
+                  style={{ height: '42px', border: isActive ? '1px solid var(--accent-light)' : '1px solid var(--glass-border)' }}
+                />
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', alignItems: 'center' }}>
+                  <button 
+                    onClick={() => handleDeleteSegment(segment.id)}
+                    style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '1.2rem', padding: '0.1rem', lineHeight: 1 }}
+                    title="Delete Row"
+                  >
+                    ×
+                  </button>
+                  <button 
+                    onClick={() => handleAddSegment(index)}
+                    style={{ background: 'none', border: 'none', color: 'var(--accent-light)', cursor: 'pointer', fontSize: '1.2rem', padding: '0.1rem', lineHeight: 1 }}
+                    title="Add Row Below"
+                  >
+                    +
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="raw-srt-container animate-fade-in">
+          <div className="raw-srt-header">
+            <div className="raw-srt-tips">
+              <span className="raw-srt-tip-badge">SRT Format Guide</span>
+              <span className="raw-srt-tip-text">
+                Format: <code>[Seq]</code>, <code>[Start Timestamp] --&gt; [End Timestamp]</code>, then <code>[Lyric text]</code>. Leave an empty line between segments.
+              </span>
+            </div>
+            <button 
+              className="btn btn-secondary revert-btn" 
+              onClick={handleRevertRawChanges}
+              disabled={!isRawDirty}
+              title="Discard your raw SRT edits and restore back to original state"
+              style={{ padding: '0.35rem 0.75rem', fontSize: '0.8rem', height: '32px' }}
             >
-              <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
-                <button
-                  onClick={() => handleJumpToSegment(segment.startTime)}
-                  style={{
-                    background: isActive ? 'var(--accent)' : 'rgba(255, 255, 255, 0.05)',
-                    border: '1px solid',
-                    borderColor: isActive ? 'var(--accent-light)' : 'var(--glass-border)',
-                    color: isActive ? '#fff' : 'var(--text-muted)',
-                    borderRadius: '50%',
-                    width: '32px',
-                    height: '32px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    cursor: 'pointer',
-                    transition: 'all 0.2s ease',
-                    boxShadow: isActive ? '0 0 8px rgba(139, 92, 246, 0.4)' : 'none'
-                  }}
-                  onMouseOver={(e) => {
-                    if (!isActive) {
-                      e.currentTarget.style.background = 'rgba(139, 92, 246, 0.15)';
-                      e.currentTarget.style.borderColor = 'var(--accent-light)';
-                      e.currentTarget.style.color = 'var(--accent-light)';
-                    }
-                  }}
-                  onMouseOut={(e) => {
-                    if (!isActive) {
-                      e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)';
-                      e.currentTarget.style.borderColor = 'var(--glass-border)';
-                      e.currentTarget.style.color = 'var(--text-muted)';
-                    }
-                  }}
-                  title="Seek player to segment start"
-                >
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" stroke="none" style={{ marginLeft: '1px' }}>
-                    <polygon points="5 3 19 12 5 21 5 3"></polygon>
-                  </svg>
-                </button>
-              </div>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: '4px' }}>
+                <path d="M2.5 2v6h6M21.5 22v-6h-6"></path>
+                <path d="M22 11.5A10 10 0 0 0 3.2 7.2L2.5 8M21.5 16l-.7 1.8A10 10 0 0 1 2 12.5"></path>
+              </svg>
+              Revert Changes
+            </button>
+          </div>
 
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                <input 
-                  type="number" 
-                  step="0.1" 
-                  value={segment.startTime} 
-                  onChange={(e) => handleTimeChange(segment.id, 'startTime', e.target.value)} 
-                />
-                <button 
-                  className="btn btn-secondary"
-                  onClick={() => setTimeToCurrent(segment.id, 'startTime')}
-                  style={{ padding: '0.2rem', fontSize: '0.7rem', borderRadius: '4px', minHeight: 'auto', display: 'block', width: '100%', textTransform: 'uppercase', letterSpacing: '0.02em' }}
-                  title="Capture current audio time"
-                >
-                  ⏱ Capture
-                </button>
-              </div>
+          <textarea
+            className="raw-srt-textarea"
+            value={srtText}
+            onChange={handleRawTextChange}
+            placeholder={`1\n00:00:01,000 --> 00:00:05,000\nType your lyric text here...\n\n2\n00:00:05,000 --> 00:00:10,000\nType the next line...`}
+            spellCheck="false"
+          />
 
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                <input 
-                  type="number" 
-                  step="0.1" 
-                  value={segment.endTime} 
-                  onChange={(e) => handleTimeChange(segment.id, 'endTime', e.target.value)} 
-                />
-                <button 
-                  className="btn btn-secondary"
-                  onClick={() => setTimeToCurrent(segment.id, 'endTime')}
-                  style={{ padding: '0.2rem', fontSize: '0.7rem', borderRadius: '4px', minHeight: 'auto', display: 'block', width: '100%', textTransform: 'uppercase', letterSpacing: '0.02em' }}
-                  title="Capture current audio time"
-                >
-                  ⏱ Capture
-                </button>
-              </div>
-
-              <input 
-                type="text" 
-                value={segment.text} 
-                onChange={(e) => handleTextChange(segment.id, e.target.value)} 
-                placeholder="Enter lyric sentence..."
-                style={{ height: '42px', border: isActive ? '1px solid var(--accent-light)' : '1px solid var(--glass-border)' }}
-              />
-
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', alignItems: 'center' }}>
-                <button 
-                  onClick={() => handleDeleteSegment(segment.id)}
-                  style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '1.2rem', padding: '0.1rem', lineHeight: 1 }}
-                  title="Delete Row"
-                >
-                  ×
-                </button>
-                <button 
-                  onClick={() => handleAddSegment(index)}
-                  style={{ background: 'none', border: 'none', color: 'var(--accent-light)', cursor: 'pointer', fontSize: '1.2rem', padding: '0.1rem', lineHeight: 1 }}
-                  title="Add Row Below"
-                >
-                  +
-                </button>
+          {validationError && (
+            <div className="validation-alert-banner">
+              <div style={{ display: 'flex', alignItems: 'start', gap: '0.75rem' }}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2.5" style={{ flexShrink: 0, marginTop: '2px' }}>
+                  <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
+                  <line x1="12" y1="9" x2="12" y2="13"></line>
+                  <line x1="12" y1="17" x2="12.01" y2="17"></line>
+                </svg>
+                <div>
+                  <h4 style={{ color: '#ef4444', margin: '0 0 0.25rem 0', fontSize: '0.9rem', fontWeight: 'bold' }}>SRT Syntax Error</h4>
+                  <p style={{ color: '#fca5a5', margin: 0, fontSize: '0.8rem', lineHeight: '1.4' }}>{validationError}</p>
+                </div>
               </div>
             </div>
-          );
-        })}
-      </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
