@@ -29,12 +29,20 @@ Style: Default,Arvo,54,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,1,0,0,0,100,1
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 `;
 
-  // Display song title if there is at least a 1-second gap before the first lyric segment
-  if (songTitle && manifest.length > 0 && manifest[0].startTime >= 1.0) {
-    const titleStart = formatAssTime(0);
-    const titleEnd = formatAssTime(manifest[0].startTime);
-    // Double font size: 54pt * 2 = 108pt. Add 300ms fade transition. Wrap in smart quotes.
-    assContent += `Dialogue: 0,${titleStart},${titleEnd},Default,,0,0,0,,{\\fad(300,300)}{\\fs108}“${songTitle}”\n`;
+  // Display song title on a title card to ensure a perfect file icon/thumbnail is generated
+  if (songTitle && manifest.length > 0) {
+    if (manifest[0].startTime >= 1.0) {
+      const titleStart = formatAssTime(0);
+      const titleEnd = formatAssTime(manifest[0].startTime);
+      // Double font size: 54pt * 2 = 108pt. Wrap in smart quotes.
+      // No fade-in (\fad(0,300)) so the first frame at 0.0s is fully opaque for the thumbnail.
+      assContent += `Dialogue: 0,${titleStart},${titleEnd},Default,,0,0,0,,{\\fad(0,300)}{\\fs108}“${songTitle}”\n`;
+    } else {
+      // Top-Center fallback: render for the first 2.0 seconds at the top center (\an8) so it doesn't overlap lyrics
+      const titleStart = formatAssTime(0);
+      const titleEnd = formatAssTime(2.0);
+      assContent += `Dialogue: 0,${titleStart},${titleEnd},Default,,0,0,0,,{\\an8}{\\fad(0,300)}{\\fs80}“${songTitle}”\n`;
+    }
   }
 
   manifest.forEach((segment) => {
