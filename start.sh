@@ -8,6 +8,30 @@ echo "Starting Lyric Video Generator Services..."
 # Create logs directory if it doesn't exist
 mkdir -p logs
 
+# Initialize PID trackers for cleanup
+BACKEND_PID=""
+FRONTEND_PID=""
+CLEANED_UP=0
+
+cleanup() {
+  if [ "$CLEANED_UP" -eq 1 ]; then
+    return
+  fi
+  CLEANED_UP=1
+  echo -e "\nStopping services..."
+  if [ -n "$BACKEND_PID" ]; then
+    kill "$BACKEND_PID" 2>/dev/null || true
+  fi
+  if [ -n "$FRONTEND_PID" ]; then
+    # Kill both the npm wrapper and its child process (e.g. Vite)
+    CHILD_PIDS=$(pgrep -P "$FRONTEND_PID" 2>/dev/null) || true
+    kill "$FRONTEND_PID" $CHILD_PIDS 2>/dev/null || true
+  fi
+}
+
+# Trap EXIT, SIGINT, and SIGTERM to ensure robust cleanup under all exit conditions
+trap cleanup EXIT SIGINT SIGTERM
+
 # Set Google Application Credentials if service-account-key.json exists in root
 if [ -f "service-account-key.json" ]; then
   export GOOGLE_APPLICATION_CREDENTIALS="$(pwd)/service-account-key.json"
@@ -45,9 +69,6 @@ echo "Backend PID: $BACKEND_PID | Log: logs/backend.log"
 echo "Frontend PID: $FRONTEND_PID | Log: logs/frontend.log"
 echo "Press Ctrl+C to stop both services."
 echo "========================================================"
-
-# Trap SIGINT and SIGTERM signals so we can gracefully kill the background processes
-trap "echo -e '\nStopping services...'; kill $BACKEND_PID $FRONTEND_PID 2>/dev/null; exit" SIGINT SIGTERM
 
 # Wait for background processes to keep the script running
 wait $BACKEND_PID $FRONTEND_PID

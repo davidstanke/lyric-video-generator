@@ -9,6 +9,7 @@ const path = require('path');
 const { generateSrt } = require('./utils/srtGenerator');
 const { execSync } = require('child_process');
 const { dbQuery, storageDir } = require('./database');
+const { guessTitle } = require('./utils/metadata');
 
 const app = express();
 const port = process.env.PORT || 3001;
@@ -88,16 +89,57 @@ app.get('/api/projects/:id', async (req, res) => {
   }
 });
 
-// 3. POST /api/projects - Create a new project (Upload & Transcribe)
-app.post('/api/projects', upload.single('audio'), async (req, res) => {
-  let chunksDir = null;
+// 2b. POST /api/projects/probe - Probe metadata of uploaded audio file
+app.post('/api/projects/probe', upload.single('audio'), async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ error: 'No audio file provided' });
     }
 
-    let filePath = req.file.path;
-    const originalExt = path.extname(req.file.originalname).toLowerCase();
+    const { guessedTitle, duration } = guessTitle(req.file.path, req.file.originalname);
+
+    res.json({
+      tempPath: req.file.path,
+      originalName: req.file.originalname,
+      guessedTitle,
+      duration
+    });
+  } catch (error) {
+    console.error('Error probing metadata:', error);
+    res.status(500).json({ error: 'Failed to probe audio file metadata' });
+  }
+});
+
+// 3. POST /api/projects - Create a new project (Upload & Transcribe)
+app.post('/api/projects', async (req, res) => {
+  let chunksDir = null;
+  try {
+    const { tempPath, title } = req.body;
+    if (!tempPath || !fs.existsSync(tempPath)) {
+      return res.status(400).json({ error: 'Valid temporary audio file path is required' });
+    }
+    if (!title || !title.trim()) {
+      return res.status(400).json({ error: 'Song title is required' });
+    }
+
+    const sanitizedTitle = title.toLowerCase()
+      .replace(/[^a-z0-9]+/g, '_')
+      .replace(/^_+|_+$/g, '');
+    const cleanTitle = sanitizedTitle || 'untitled_track';
+    const ext = path.extname(tempPath).toLowerCase();
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    const newFilename = `${cleanTitle}-${uniqueSuffix}${ext}`;
+    const newFilePath = path.join(path.dirname(tempPath), newFilename);
+
+    try {
+      fs.renameSync(tempPath, newFilePath);
+    } catch (renameErr) {
+      console.error('Error renaming temporary audio file:', renameErr);
+      return res.status(500).json({ error: 'Failed to organize audio file on disk', details: renameErr.message });
+    }
+
+    let filePath = newFilePath;
+    const originalExt = path.extname(filePath).toLowerCase();
 
     // If the file is not an MP3, transcode it to MP3
     if (originalExt !== '.mp3') {
@@ -117,7 +159,7 @@ app.post('/api/projects', upload.single('audio'), async (req, res) => {
     }
 
     const totalDuration = getAudioDuration(filePath);
-    console.log(`Processing file: ${req.file.originalname} (Duration: ${totalDuration.toFixed(1)}s)`);
+    console.log(`Processing file: ${title} (Duration: ${totalDuration.toFixed(1)}s)`);
 
     let manifest = [];
     let idCounter = 1;
@@ -139,7 +181,7 @@ app.post('/api/projects', upload.single('audio'), async (req, res) => {
             enableWordTimeOffsets: true,
           };
 
-          console.log(`Transcribing ${req.file.originalname} directly...`);
+          console.log(`Transcribing ${title} directly...`);
           const [response] = await speechClient.recognize({ audio, config });
           
           response.results.forEach((result) => {
@@ -226,8 +268,7 @@ app.post('/api/projects', upload.single('audio'), async (req, res) => {
       }];
     }
 
-    // Default project name: e.g. "My Video - sample.mp3"
-    const projectName = `Lyric Video - ${path.basename(req.file.originalname)}`;
+    const projectName = title.trim();
     
     // Save project in SQLite database
     const insertResult = await dbQuery.run(
@@ -288,6 +329,32 @@ app.put('/api/projects/:id/manifest', async (req, res) => {
   }
 });
 
+// 4b. PUT /api/projects/:id/rename - Rename project
+app.put('/api/projects/:id/rename', async (req, res) => {
+  try {
+    const { name } = req.body;
+    if (!name || !name.trim()) {
+      return res.status(400).json({ error: 'Project name is required' });
+    }
+
+    // Check project exists
+    const project = await dbQuery.get('SELECT id FROM projects WHERE id = ?', [req.params.id]);
+    if (!project) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+
+    await dbQuery.run(
+      'UPDATE projects SET name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+      [name.trim(), req.params.id]
+    );
+
+    res.json({ success: true, name: name.trim() });
+  } catch (error) {
+    console.error('Error renaming project:', error);
+    res.status(500).json({ error: 'Failed to rename project' });
+  }
+});
+
 // 5. POST /api/projects/:id/render - Render video
 app.post('/api/projects/:id/render', async (req, res) => {
   try {
@@ -308,7 +375,11 @@ app.post('/api/projects/:id/render', async (req, res) => {
     const srtPath = path.join(storageDir, 'subtitles', srtFilename);
     fs.writeFileSync(srtPath, srtContent);
 
-    const outputFilename = `lyric_video_${Date.now()}.mp4`;
+    const sanitizedTitle = project.name.toLowerCase()
+      .replace(/[^a-z0-9]+/g, '_')
+      .replace(/^_+|_+$/g, '');
+    const cleanTitle = sanitizedTitle || 'lyric_video';
+    const outputFilename = `${cleanTitle}_${Date.now()}.mp4`;
     const outputPath = path.join(storageDir, 'video', outputFilename);
 
     console.log('Starting FFmpeg rendering...');
