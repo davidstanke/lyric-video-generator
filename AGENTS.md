@@ -1,6 +1,8 @@
+**Don't work in `main` without permission**
+Before writing ANY files within the working directory, check to see if the current branch is `main`. If so, ALWAYS check with the user before proceeding. Ask the user if they would like to write changes in `main`, or switch to a new branch before writing. If the user chooses to switch to a new branch, suggest a branch name but allow the user to customize it. If the working directory is not under version control, allow writes.
+
 **Rules for conducting a "Grill Me" session**
-  * At the beginning of a `/grill-me` session, ALWAYS checkout a new branch. Name it with the current timestamp.
-  * At the end of a `/grill-me` session, change the name of the current branch to something meaningful, based on the work that was discussed. Keep it short (four words or less, separated by dashes)
+  * At the end of a `/grill-me` session, prior to implementation, check out a new branch. Name it something meaningful, based on the work that was discussed. Keep it short (four words or less, separated by dashes)
 
 **Rules for feature dev**
   * After completing an implementation plan:
