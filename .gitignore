@@ -4,3 +4,4 @@ storage/
 *.sqlite
 *.db
 .DS_Store
+.antigravitycli
