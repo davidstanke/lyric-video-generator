@@ -11,6 +11,7 @@ const { execSync } = require('child_process');
 const { dbQuery, storageDir } = require('./database');
 const { guessTitle } = require('./utils/metadata');
 const { classifyLyrics } = require('./utils/themeClassifier');
+const { alignLyrics } = require('./utils/lyricAligner');
 
 const app = express();
 const port = process.env.PORT || 3001;
@@ -138,7 +139,7 @@ app.post('/api/projects/probe', upload.single('audio'), async (req, res) => {
 app.post('/api/projects', async (req, res) => {
   let chunksDir = null;
   try {
-    const { tempPath, title } = req.body;
+    const { tempPath, title, lyrics, autoAlign } = req.body;
     if (!tempPath || !fs.existsSync(tempPath)) {
       return res.status(400).json({ error: 'Valid temporary audio file path is required' });
     }
@@ -189,7 +190,10 @@ app.post('/api/projects', async (req, res) => {
     let idCounter = 1;
     let transcriptionStatus = 'success';
 
-    if (!isSpeechConfigured()) {
+    const hasLyrics = typeof lyrics === 'string' && lyrics.trim().length > 0;
+    const shouldTranscribe = !hasLyrics || (autoAlign && isSpeechConfigured());
+
+    if (shouldTranscribe && !isSpeechConfigured()) {
       try { fs.unlinkSync(filePath); } catch (e) {}
       return res.status(400).json({
         error: 'MissingCredentials',
@@ -197,54 +201,13 @@ app.post('/api/projects', async (req, res) => {
       });
     }
 
-    try {
-      if (totalDuration <= 59.0) {
-        // Short audio: transcribe directly
-        const audioBytes = fs.readFileSync(filePath).toString('base64');
-        const audio = { content: audioBytes };
-        const config = {
-          encoding: 'MP3',
-          sampleRateHertz: 44100,
-          languageCode: 'en-US',
-          enableWordTimeOffsets: true,
-        };
+    const allTranscribedWords = [];
 
-        console.log(`Transcribing ${title} directly...`);
-        const [response] = await speechClient.recognize({ audio, config });
-        
-        response.results.forEach((result) => {
-          const alternative = result.alternatives[0];
-          const wordsInfo = alternative.words;
-          if (wordsInfo.length > 0) {
-            const startTime = parseFloat(wordsInfo[0].startTime.seconds || 0) + (wordsInfo[0].startTime.nanos || 0) / 1e9;
-            const endTime = parseFloat(wordsInfo[wordsInfo.length - 1].endTime.seconds || 0) + (wordsInfo[wordsInfo.length - 1].endTime.nanos || 0) / 1e9;
-            manifest.push({
-              id: idCounter++,
-              startTime,
-              endTime,
-              text: alternative.transcript.trim(),
-            });
-          }
-        });
-      } else {
-        // Long audio: chunk using FFmpeg first
-        chunksDir = path.join(storageDir, 'audio', `chunks_${Date.now()}`);
-        fs.mkdirSync(chunksDir);
-
-        console.log(`Splitting audio into chunks...`);
-        execSync(`ffmpeg -i "${filePath}" -f segment -segment_time 50 -c copy "${chunksDir}/chunk_%03d.mp3"`);
-
-        const chunkFiles = fs.readdirSync(chunksDir)
-          .filter(file => file.startsWith('chunk_') && file.endsWith('.mp3'))
-          .sort();
-
-        console.log(`Created ${chunkFiles.length} chunks. Transcribing sequentially...`);
-        
-        let cumulativeTime = 0;
-
-        for (const file of chunkFiles) {
-          const chunkPath = path.join(chunksDir, file);
-          const audioBytes = fs.readFileSync(chunkPath).toString('base64');
+    if (shouldTranscribe) {
+      try {
+        if (totalDuration <= 59.0) {
+          // Short audio: transcribe directly
+          const audioBytes = fs.readFileSync(filePath).toString('base64');
           const audio = { content: audioBytes };
           const config = {
             encoding: 'MP3',
@@ -253,39 +216,131 @@ app.post('/api/projects', async (req, res) => {
             enableWordTimeOffsets: true,
           };
 
-          console.log(`Transcribing chunk: ${file}`);
+          console.log(`Transcribing ${title} directly...`);
           const [response] = await speechClient.recognize({ audio, config });
-
+          
           response.results.forEach((result) => {
             const alternative = result.alternatives[0];
             const wordsInfo = alternative.words;
-            if (wordsInfo.length > 0) {
-              const startTime = parseFloat(wordsInfo[0].startTime.seconds || 0) + (wordsInfo[0].startTime.nanos || 0) / 1e9;
-              const endTime = parseFloat(wordsInfo[wordsInfo.length - 1].endTime.seconds || 0) + (wordsInfo[wordsInfo.length - 1].endTime.nanos || 0) / 1e9;
-              manifest.push({
-                id: idCounter++,
-                startTime: startTime + cumulativeTime,
-                endTime: endTime + cumulativeTime,
-                text: alternative.transcript.trim(),
+            if (wordsInfo && wordsInfo.length > 0) {
+              // Collect word level offsets
+              wordsInfo.forEach(w => {
+                const start = parseFloat(w.startTime.seconds || 0) + (w.startTime.nanos || 0) / 1e9;
+                const end = parseFloat(w.endTime.seconds || 0) + (w.endTime.nanos || 0) / 1e9;
+                allTranscribedWords.push({
+                  word: w.word,
+                  startTime: start,
+                  endTime: end
+                });
               });
+
+              if (!hasLyrics) {
+                const startTime = parseFloat(wordsInfo[0].startTime.seconds || 0) + (wordsInfo[0].startTime.nanos || 0) / 1e9;
+                const endTime = parseFloat(wordsInfo[wordsInfo.length - 1].endTime.seconds || 0) + (wordsInfo[wordsInfo.length - 1].endTime.nanos || 0) / 1e9;
+                manifest.push({
+                  id: idCounter++,
+                  startTime,
+                  endTime,
+                  text: alternative.transcript.trim(),
+                });
+              }
             }
           });
+        } else {
+          // Long audio: chunk using FFmpeg first
+          chunksDir = path.join(storageDir, 'audio', `chunks_${Date.now()}`);
+          fs.mkdirSync(chunksDir);
 
-          // Add chunk duration to cumulativeTime
-          const duration = getAudioDuration(chunkPath);
-          cumulativeTime += duration;
+          console.log(`Splitting audio into chunks...`);
+          execSync(`ffmpeg -i "${filePath}" -f segment -segment_time 50 -c copy "${chunksDir}/chunk_%03d.mp3"`);
 
-          // Clean up chunk file
-          try { fs.unlinkSync(chunkPath); } catch (e) {}
+          const chunkFiles = fs.readdirSync(chunksDir)
+            .filter(file => file.startsWith('chunk_') && file.endsWith('.mp3'))
+            .sort();
+
+          console.log(`Created ${chunkFiles.length} chunks. Transcribing sequentially...`);
+          
+          let cumulativeTime = 0;
+
+          for (const file of chunkFiles) {
+            const chunkPath = path.join(chunksDir, file);
+            const audioBytes = fs.readFileSync(chunkPath).toString('base64');
+            const audio = { content: audioBytes };
+            const config = {
+              encoding: 'MP3',
+              sampleRateHertz: 44100,
+              languageCode: 'en-US',
+              enableWordTimeOffsets: true,
+            };
+
+            console.log(`Transcribing chunk: ${file}`);
+            const [response] = await speechClient.recognize({ audio, config });
+
+            response.results.forEach((result) => {
+              const alternative = result.alternatives[0];
+              const wordsInfo = alternative.words;
+              if (wordsInfo && wordsInfo.length > 0) {
+                // Collect word level offsets
+                wordsInfo.forEach(w => {
+                  const start = parseFloat(w.startTime.seconds || 0) + (w.startTime.nanos || 0) / 1e9;
+                  const end = parseFloat(w.endTime.seconds || 0) + (w.endTime.nanos || 0) / 1e9;
+                  allTranscribedWords.push({
+                    word: w.word,
+                    startTime: start + cumulativeTime,
+                    endTime: end + cumulativeTime
+                  });
+                });
+
+                if (!hasLyrics) {
+                  const startTime = parseFloat(wordsInfo[0].startTime.seconds || 0) + (wordsInfo[0].startTime.nanos || 0) / 1e9;
+                  const endTime = parseFloat(wordsInfo[wordsInfo.length - 1].endTime.seconds || 0) + (wordsInfo[wordsInfo.length - 1].endTime.nanos || 0) / 1e9;
+                  manifest.push({
+                    id: idCounter++,
+                    startTime: startTime + cumulativeTime,
+                    endTime: endTime + cumulativeTime,
+                    text: alternative.transcript.trim(),
+                  });
+                }
+              }
+            });
+
+            // Add chunk duration to cumulativeTime
+            const duration = getAudioDuration(chunkPath);
+            cumulativeTime += duration;
+
+            // Clean up chunk file
+            try { fs.unlinkSync(chunkPath); } catch (e) {}
+          }
         }
+      } catch (transcribeError) {
+        console.error("Transcription error encountered, falling back to manual mode:", transcribeError.message);
+        transcriptionStatus = 'manual';
+        manifest = [];
       }
-    } catch (transcribeError) {
-      console.error("Transcription error encountered, falling back to manual mode:", transcribeError.message);
-      transcriptionStatus = 'manual';
-      manifest = [];
     }
 
-    if (transcriptionStatus === 'manual' || manifest.length === 0) {
+    if (hasLyrics) {
+      const pastedLines = lyrics.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
+      let alignedManifest = null;
+      
+      if (autoAlign && isSpeechConfigured() && allTranscribedWords.length > 0) {
+        alignedManifest = alignLyrics(pastedLines, allTranscribedWords);
+      }
+
+      if (alignedManifest) {
+        manifest = alignedManifest;
+        transcriptionStatus = 'success';
+      } else {
+        console.log("Using manual alignment with clean slate of 0.0 timings.");
+        transcriptionStatus = 'manual';
+        manifest = pastedLines.map((line, idx) => ({
+          id: idx + 1,
+          startTime: 0.0,
+          endTime: 0.0,
+          text: line
+        }));
+      }
+    } else if (transcriptionStatus === 'manual' || manifest.length === 0) {
       // Fallback: Create a single skeleton lyric segment
       manifest = [{
         id: idCounter++,

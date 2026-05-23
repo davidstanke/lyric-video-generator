@@ -11,6 +11,10 @@ function UploadPage() {
   const [duration, setDuration] = useState(0);
   const [error, setError] = useState(null);
   const [isConfigured, setIsConfigured] = useState(true);
+  const [lyrics, setLyrics] = useState('');
+  const [showLyricsInput, setShowLyricsInput] = useState(false);
+  const [autoAlign, setAutoAlign] = useState(true);
+  const [showSetupGuide, setShowSetupGuide] = useState(false);
   const fileInputRef = useRef(null);
   const navigate = useNavigate();
 
@@ -139,7 +143,9 @@ function UploadPage() {
     try {
       const response = await axios.post('/api/projects', {
         tempPath,
-        title: title.trim()
+        title: title.trim(),
+        lyrics: lyrics.trim(),
+        autoAlign: isConfigured ? autoAlign : false
       });
 
       // Redirect to the newly created project's edit screen
@@ -166,88 +172,130 @@ function UploadPage() {
       </div>
       <p style={{ marginBottom: '2rem', textAlign: 'left' }}>Select an audio file (MP3, M4A, WAV, etc.) to automatically analyze metadata, edit the song title, and synchronize lyrics.</p>
 
-      {!isConfigured ? (
-        renderSetupInstructions()
-      ) : (
-        <>
-          <div 
-            style={{
-              border: '2px dashed var(--glass-border)',
-              borderRadius: '12px',
-              padding: '3rem',
-              marginBottom: '2rem',
-              cursor: (isUploading || isProbing) ? 'default' : 'pointer',
-              background: 'rgba(0,0,0,0.2)',
-              transition: 'all 0.3s ease'
-            }}
-            onClick={() => !(isUploading || isProbing) && fileInputRef.current.click()}
-            onMouseOver={(e) => !(isUploading || isProbing) && (e.currentTarget.style.borderColor = 'var(--accent-light)')}
-            onMouseOut={(e) => !(isUploading || isProbing) && (e.currentTarget.style.borderColor = 'var(--glass-border)')}
-          >
-            <input 
-              type="file" 
-              accept="audio/*" 
-              ref={fileInputRef} 
-              style={{ display: 'none' }} 
-              disabled={isUploading || isProbing}
-              onChange={handleFileChange}
-            />
-            {isProbing ? (
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1rem' }}>
-                <svg className="animate-spin" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--accent-light)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <line x1="12" y1="2" x2="12" y2="6"></line>
-                  <line x1="12" y1="18" x2="12" y2="22"></line>
-                  <line x1="4.93" y1="4.93" x2="7.76" y2="7.76"></line>
-                  <line x1="16.24" y1="16.24" x2="19.07" y2="19.07"></line>
-                  <line x1="2" y1="12" x2="6" y2="12"></line>
-                  <line x1="18" y1="12" x2="22" y2="12"></line>
-                  <line x1="4.93" y1="19.07" x2="7.76" y2="16.24"></line>
-                  <line x1="16.24" y1="7.76" x2="19.07" y2="4.93"></line>
-                </svg>
-                <p style={{ color: 'var(--accent-light)', fontWeight: '600' }}>Analyzing Audio & Extracting Metadata...</p>
-              </div>
-            ) : file ? (
-              <div>
-                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--accent-light)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginBottom: '1rem' }}>
-                  <path d="M9 18V5l12-2v13"></path>
-                  <circle cx="6" cy="18" r="3"></circle>
-                  <circle cx="18" cy="16" r="3"></circle>
-                </svg>
-                <h3 style={{ color: 'var(--text-main)', wordBreak: 'break-all', marginBottom: '0.5rem' }}>{file.name}</h3>
-                <p style={{ color: 'var(--text-muted)', margin: 0 }}>
-                  {(file.size / 1024 / 1024).toFixed(2)} MB {duration > 0 && `• ${Math.floor(duration / 60)}m ${Math.round(duration % 60)}s`}
-                </p>
-                {tempPath && (
-                  <p style={{ color: '#10b981', fontSize: '0.85rem', fontWeight: 'bold', marginTop: '0.5rem' }}>
-                    ✓ Audio Analyzed Successfully
-                  </p>
-                )}
-              </div>
-            ) : (
-              <div>
-                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginBottom: '1rem' }}>
-                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                  <polyline points="17 8 12 3 7 8"></polyline>
-                  <line x1="12" y1="3" x2="12" y2="15"></line>
-                </svg>
-                <p>Click or drag to upload an audio file (MP3, M4A, WAV, etc.)</p>
-              </div>
-            )}
+      {!isConfigured && (
+        <div style={{
+          background: 'rgba(239, 68, 68, 0.05)',
+          border: '1.5px solid rgba(239, 68, 68, 0.2)',
+          borderRadius: '12px',
+          padding: '1.25rem',
+          marginBottom: '2rem',
+          textAlign: 'left',
+          fontSize: '0.9rem',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '0.5rem'
+        }}>
+          <div>
+            <strong style={{ color: '#f87171' }}>⚠️ Automatic Transcription Offline:</strong> Google Cloud credentials are not configured. Speech-to-text is currently unavailable.
           </div>
-
-          {error && (
-            <div style={{ color: '#ef4444', marginBottom: '1.5rem', background: 'rgba(239, 68, 68, 0.1)', padding: '1rem', borderRadius: '8px', textAlign: 'left' }}>
-              {error}
+          <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+            You can still upload audio and paste lyrics directly! We will set up a clean manual timing grid which you can sync in seconds.
+          </div>
+          <button
+            type="button"
+            onClick={() => setShowSetupGuide(!showSetupGuide)}
+            style={{
+              background: 'none',
+              border: 'none',
+              color: 'var(--accent-light)',
+              textDecoration: 'underline',
+              cursor: 'pointer',
+              alignSelf: 'flex-start',
+              padding: 0,
+              fontSize: '0.85rem'
+            }}
+          >
+            {showSetupGuide ? '🙈 Hide Setup Instructions' : '📖 Show Google Cloud Setup Instructions'}
+          </button>
+          
+          {showSetupGuide && (
+            <div style={{ marginTop: '0.5rem' }}>
+              {renderSetupInstructions()}
             </div>
           )}
+        </div>
+      )}
 
-          {tempPath && (
+      <>
+        <div 
+          style={{
+            border: '2px dashed var(--glass-border)',
+            borderRadius: '12px',
+            padding: '3rem',
+            marginBottom: '2rem',
+            cursor: (isUploading || isProbing) ? 'default' : 'pointer',
+            background: 'rgba(0,0,0,0.2)',
+            transition: 'all 0.3s ease'
+          }}
+          onClick={() => !(isUploading || isProbing) && fileInputRef.current.click()}
+          onMouseOver={(e) => !(isUploading || isProbing) && (e.currentTarget.style.borderColor = 'var(--accent-light)')}
+          onMouseOut={(e) => !(isUploading || isProbing) && (e.currentTarget.style.borderColor = 'var(--glass-border)')}
+        >
+          <input 
+            type="file" 
+            accept="audio/*" 
+            ref={fileInputRef} 
+            style={{ display: 'none' }} 
+            disabled={isUploading || isProbing}
+            onChange={handleFileChange}
+          />
+          {isProbing ? (
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1rem' }}>
+              <svg className="animate-spin" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--accent-light)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="12" y1="2" x2="12" y2="6"></line>
+                <line x1="12" y1="18" x2="12" y2="22"></line>
+                <line x1="4.93" y1="4.93" x2="7.76" y2="7.76"></line>
+                <line x1="16.24" y1="16.24" x2="19.07" y2="19.07"></line>
+                <line x1="2" y1="12" x2="6" y2="12"></line>
+                <line x1="18" y1="12" x2="22" y2="12"></line>
+                <line x1="4.93" y1="19.07" x2="7.76" y2="16.24"></line>
+                <line x1="16.24" y1="7.76" x2="19.07" y2="4.93"></line>
+              </svg>
+              <p style={{ color: 'var(--accent-light)', fontWeight: '600' }}>Analyzing Audio & Extracting Metadata...</p>
+            </div>
+          ) : file ? (
+            <div>
+              <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--accent-light)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginBottom: '1rem' }}>
+                <path d="M9 18V5l12-2v13"></path>
+                <circle cx="6" cy="18" r="3"></circle>
+                <circle cx="18" cy="16" r="3"></circle>
+              </svg>
+              <h3 style={{ color: 'var(--text-main)', wordBreak: 'break-all', marginBottom: '0.5rem' }}>{file.name}</h3>
+              <p style={{ color: 'var(--text-muted)', margin: 0 }}>
+                {(file.size / 1024 / 1024).toFixed(2)} MB {duration > 0 && `• ${Math.floor(duration / 60)}m ${Math.round(duration % 60)}s`}
+              </p>
+              {tempPath && (
+                <p style={{ color: '#10b981', fontSize: '0.85rem', fontWeight: 'bold', marginTop: '0.5rem' }}>
+                  ✓ Audio Analyzed Successfully
+                </p>
+              )}
+            </div>
+          ) : (
+            <div>
+              <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginBottom: '1rem' }}>
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                <polyline points="17 8 12 3 7 8"></polyline>
+                <line x1="12" y1="3" x2="12" y2="15"></line>
+              </svg>
+              <p>Click or drag to upload an audio file (MP3, M4A, WAV, etc.)</p>
+            </div>
+          )}
+        </div>
+
+        {error && (
+          <div style={{ color: '#ef4444', marginBottom: '1.5rem', background: 'rgba(239, 68, 68, 0.1)', padding: '1rem', borderRadius: '8px', textAlign: 'left' }}>
+            {error}
+          </div>
+        )}
+
+        {tempPath && (
+          <>
             <div style={{
               background: 'rgba(255,255,255,0.03)',
               border: '1px solid var(--glass-border)',
               borderRadius: '12px',
               padding: '1.5rem',
-              marginBottom: '2rem',
+              marginBottom: '1.5rem',
               textAlign: 'left'
             }}>
               <label style={{ display: 'block', fontSize: '0.9rem', color: 'var(--text-muted)', fontWeight: 'bold', marginBottom: '0.5rem' }}>
@@ -276,27 +324,131 @@ function UploadPage() {
                 We've guessed this title. You can customize it before starting transcription.
               </p>
             </div>
-          )}
 
-          <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center' }}>
-            <button 
-              className="btn" 
-              onClick={handleUpload} 
-              disabled={!tempPath || !title.trim() || isUploading || isProbing}
-              style={{ flex: 1, maxWidth: '250px' }}
-            >
-              {isUploading ? (
-                <span className="animate-pulse">Processing Audio...</span>
-              ) : (
-                'Generate Lyrics'
-              )}
-            </button>
-            <Link to="/" className="btn btn-secondary" style={{ flex: 1, maxWidth: '150px' }}>
-              Cancel
-            </Link>
-          </div>
-        </>
-      )}
+            {/* Paste Lyrics Block */}
+            <div style={{
+              background: 'rgba(255,255,255,0.03)',
+              border: '1px solid var(--glass-border)',
+              borderRadius: '12px',
+              padding: '1.5rem',
+              marginBottom: '2rem',
+              textAlign: 'left'
+            }}>
+              <button
+                type="button"
+                onClick={() => setShowLyricsInput(!showLyricsInput)}
+                style={{
+                  width: '100%',
+                  background: 'none',
+                  border: 'none',
+                  padding: 0,
+                  color: 'var(--text-main)',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  cursor: 'pointer',
+                  fontSize: '1rem',
+                  fontWeight: 'bold'
+                }}
+              >
+                <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  📝 Provide Custom Lyrics (Optional)
+                </span>
+                <span style={{ 
+                  transform: showLyricsInput ? 'rotate(180deg)' : 'rotate(0deg)',
+                  transition: 'transform 0.3s ease',
+                  color: 'var(--text-muted)',
+                  fontSize: '0.8rem'
+                }}>
+                  ▼
+                </span>
+              </button>
+
+              <div style={{
+                maxHeight: showLyricsInput ? '800px' : '0px',
+                opacity: showLyricsInput ? 1 : 0,
+                overflow: 'hidden',
+                transition: 'all 0.4s cubic-bezier(0.4, 0, 0.2, 1)',
+                marginTop: showLyricsInput ? '1.25rem' : '0'
+              }}>
+                <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', margin: '0 0 0.75rem 0' }}>
+                  Paste your song lyrics below. Each non-empty line will become a timed segment.
+                </p>
+                <textarea
+                  value={lyrics}
+                  onChange={(e) => setLyrics(e.target.value)}
+                  placeholder={"Example:\nHello darkness, my old friend\nI've come to talk with you again..."}
+                  disabled={isUploading}
+                  style={{
+                    width: '100%',
+                    height: '180px',
+                    borderRadius: '8px',
+                    padding: '0.75rem 1rem',
+                    background: 'rgba(0, 0, 0, 0.3)',
+                    border: '1px solid var(--glass-border)',
+                    color: 'var(--text-main)',
+                    fontSize: '0.95rem',
+                    fontFamily: 'inherit',
+                    resize: 'vertical',
+                    boxSizing: 'border-box',
+                    lineHeight: '1.5'
+                  }}
+                />
+
+                {isConfigured && (
+                  <div style={{ marginTop: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <input
+                      type="checkbox"
+                      id="autoAlignCheckbox"
+                      checked={autoAlign}
+                      onChange={(e) => setAutoAlign(e.target.checked)}
+                      disabled={isUploading}
+                      style={{
+                        width: '16px',
+                        height: '16px',
+                        cursor: 'pointer',
+                        accentColor: 'var(--accent)'
+                      }}
+                    />
+                    <label 
+                      htmlFor="autoAlignCheckbox" 
+                      style={{ fontSize: '0.85rem', color: 'var(--text-main)', cursor: 'pointer', userSelect: 'none' }}
+                    >
+                      Auto-align lyrics with voice timings (using AI)
+                    </label>
+                  </div>
+                )}
+
+                {!isConfigured && (
+                  <p style={{ fontSize: '0.8rem', color: '#f87171', marginTop: '0.75rem', margin: 0 }}>
+                    ℹ️ Lyrics will be created with manual timings (0.0s start/end). You can easily synchronize them line-by-line as the song plays in the editor!
+                  </p>
+                )}
+              </div>
+            </div>
+          </>
+        )}
+
+        <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center' }}>
+          <button 
+            className="btn" 
+            onClick={handleUpload} 
+            disabled={!tempPath || !title.trim() || isUploading || isProbing}
+            style={{ flex: 1, maxWidth: '250px' }}
+          >
+            {isUploading ? (
+              <span className="animate-pulse">Processing Audio...</span>
+            ) : lyrics.trim().length > 0 ? (
+              'Create Project & Sync'
+            ) : (
+              'Generate Lyrics'
+            )}
+          </button>
+          <Link to="/" className="btn btn-secondary" style={{ flex: 1, maxWidth: '150px' }}>
+            Cancel
+          </Link>
+        </div>
+      </>
     </div>
   );
 }
