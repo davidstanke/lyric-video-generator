@@ -3,4 +3,4 @@ logs/
 storage/
 *.sqlite
 *.db
-
+.DS_Store
