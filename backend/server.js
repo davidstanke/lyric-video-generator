@@ -11,7 +11,7 @@ const { execSync } = require('child_process');
 const { dbQuery, storageDir } = require('./database');
 const { guessTitle } = require('./utils/metadata');
 const { classifyLyrics } = require('./utils/themeClassifier');
-const { alignLyrics } = require('./utils/lyricAligner');
+const { alignLyrics, resolveManifestOverlaps } = require('./utils/lyricAligner');
 
 const app = express();
 const port = process.env.PORT || 3001;
@@ -349,6 +349,7 @@ app.post('/api/projects', async (req, res) => {
         text: "[Enter lyrics here]"
       }];
     }
+    manifest = resolveManifestOverlaps(manifest);
 
     const projectName = title.trim();
     
@@ -409,9 +410,11 @@ app.put('/api/projects/:id/manifest', async (req, res) => {
       return res.status(404).json({ error: 'Project not found' });
     }
 
+    const resolvedManifest = resolveManifestOverlaps(manifest);
+
     await dbQuery.run(
       'UPDATE projects SET manifest = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
-      [JSON.stringify(manifest), req.params.id]
+      [JSON.stringify(resolvedManifest), req.params.id]
     );
 
     res.json({ success: true });

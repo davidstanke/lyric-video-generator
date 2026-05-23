@@ -117,6 +117,101 @@ function parseSrt(srtText) {
   return segments;
 }
 
+function resolveManifestOverlaps(manifest) {
+  if (!manifest || manifest.length === 0) return [];
+  
+  // Sort by startTime
+  const sorted = [...manifest].map(seg => ({ ...seg })).sort((a, b) => a.startTime - b.startTime);
+  
+  for (let i = 0; i < sorted.length - 1; i++) {
+    const current = sorted[i];
+    const next = sorted[i + 1];
+    
+    if (current.endTime > next.startTime) {
+      // Overlap detected: clip end time of current segment
+      current.endTime = parseFloat(next.startTime.toFixed(2));
+      
+      // If current segment duration is less than 0.1s, push startTime backward
+      if (parseFloat((current.endTime - current.startTime).toFixed(2)) < 0.1) {
+        current.startTime = parseFloat(Math.max(0, current.endTime - 0.1).toFixed(2));
+        
+        // Propagate backward
+        let j = i;
+        while (j > 0 && sorted[j - 1].endTime > sorted[j].startTime) {
+          sorted[j - 1].endTime = parseFloat(sorted[j].startTime.toFixed(2));
+          if (parseFloat((sorted[j - 1].endTime - sorted[j - 1].startTime).toFixed(2)) < 0.1) {
+            sorted[j - 1].startTime = parseFloat(Math.max(0, sorted[j - 1].endTime - 0.1).toFixed(2));
+          }
+          j--;
+        }
+      }
+    }
+  }
+  
+  return sorted;
+}
+
+function propagateBackward(manifest, index) {
+  let targetTime = manifest[index].startTime;
+  
+  for (let i = index - 1; i >= 0; i--) {
+    if (manifest[i].endTime > targetTime) {
+      manifest[i].endTime = parseFloat(targetTime.toFixed(2));
+      
+      if (parseFloat((manifest[i].endTime - manifest[i].startTime).toFixed(2)) < 0.1) {
+        manifest[i].startTime = parseFloat(Math.max(0, manifest[i].endTime - 0.1).toFixed(2));
+      }
+    }
+    targetTime = manifest[i].startTime;
+  }
+}
+
+function propagateForward(manifest, index) {
+  let targetTime = manifest[index].endTime;
+  
+  for (let i = index + 1; i < manifest.length; i++) {
+    if (manifest[i].startTime < targetTime) {
+      manifest[i].startTime = parseFloat(targetTime.toFixed(2));
+      
+      if (parseFloat((manifest[i].endTime - manifest[i].startTime).toFixed(2)) < 0.1) {
+        manifest[i].endTime = parseFloat((manifest[i].startTime + 0.1).toFixed(2));
+      }
+    }
+    targetTime = manifest[i].endTime;
+  }
+}
+
+function adjustSegmentTime(manifestList, segId, field, value) {
+  const manifest = manifestList.map(seg => ({ ...seg }));
+  const index = manifest.findIndex(seg => seg.id === segId);
+  if (index === -1) return manifestList;
+  
+  const val = parseFloat(value) || 0;
+  
+  if (field === 'startTime') {
+    manifest[index].startTime = val;
+    
+    if (parseFloat((manifest[index].endTime - manifest[index].startTime).toFixed(2)) < 0.1) {
+      manifest[index].endTime = parseFloat((manifest[index].startTime + 0.1).toFixed(2));
+      propagateForward(manifest, index);
+    }
+    
+    propagateBackward(manifest, index);
+    
+  } else if (field === 'endTime') {
+    manifest[index].endTime = val;
+    
+    if (parseFloat((manifest[index].endTime - manifest[index].startTime).toFixed(2)) < 0.1) {
+      manifest[index].startTime = parseFloat(Math.max(0, manifest[index].endTime - 0.1).toFixed(2));
+      propagateBackward(manifest, index);
+    }
+    
+    propagateForward(manifest, index);
+  }
+  
+  return manifest;
+}
+
 function EditorPage() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -246,7 +341,9 @@ function EditorPage() {
   };
 
   const handleTimeChange = (segId, field, newValue) => {
-    setManifest(manifest.map(seg => seg.id === segId ? { ...seg, [field]: parseFloat(newValue) || 0 } : seg));
+    const val = parseFloat(newValue) || 0;
+    const newManifest = adjustSegmentTime(manifest, segId, field, val);
+    setManifest(newManifest);
   };
 
   const handleAddSegment = (index) => {
@@ -283,7 +380,8 @@ function EditorPage() {
   const handleSwitchToTable = () => {
     if (editMode === 'table') return;
     try {
-      const parsedManifest = parseSrt(srtText);
+      let parsedManifest = parseSrt(srtText);
+      parsedManifest = resolveManifestOverlaps(parsedManifest);
       setManifest(parsedManifest);
       setValidationError(null);
       setIsRawDirty(false);
@@ -333,8 +431,12 @@ function EditorPage() {
       let activeManifest = manifest;
       if (editMode === 'raw') {
         activeManifest = parseSrt(srtText);
+        activeManifest = resolveManifestOverlaps(activeManifest);
         setManifest(activeManifest);
         setIsRawDirty(false);
+      } else {
+        activeManifest = resolveManifestOverlaps(manifest);
+        setManifest(activeManifest);
       }
       await axios.put(`/api/projects/${id}/manifest`, { manifest: activeManifest });
       showToast('Manifest saved successfully!', 'success');
@@ -360,8 +462,12 @@ function EditorPage() {
       let activeManifest = manifest;
       if (editMode === 'raw') {
         activeManifest = parseSrt(srtText);
+        activeManifest = resolveManifestOverlaps(activeManifest);
         setManifest(activeManifest);
         setIsRawDirty(false);
+      } else {
+        activeManifest = resolveManifestOverlaps(manifest);
+        setManifest(activeManifest);
       }
       
       // First auto-save the manifest to ensure the video has the latest edits
@@ -396,20 +502,16 @@ function EditorPage() {
       if (index !== -1 && index < manifest.length - 1) {
         const nextSegment = manifest[index + 1];
         if (nextSegment.startTime === 0) {
-          setManifest(manifest.map((seg, i) => {
-            if (seg.id === segId) {
-              return { ...seg, endTime: time };
-            } else if (i === index + 1) {
-              return { ...seg, startTime: time };
-            }
-            return seg;
-          }));
+          let newManifest = adjustSegmentTime(manifest, nextSegment.id, 'startTime', time);
+          newManifest = adjustSegmentTime(newManifest, segId, 'endTime', time);
+          setManifest(newManifest);
           return;
         }
       }
     }
     
-    handleTimeChange(segId, field, time);
+    const newManifest = adjustSegmentTime(manifest, segId, field, time);
+    setManifest(newManifest);
   };
 
   const handleJumpToSegment = (startTime) => {

@@ -192,10 +192,56 @@ function alignLyrics(pastedLines, transcribedWords) {
   }).filter(Boolean);
 
   // 5. Add sequence IDs
-  return resultLines.map((line, idx) => ({
+  const finalized = resultLines.map((line, idx) => ({
     id: idx + 1,
     ...line
   }));
+
+  return resolveManifestOverlaps(finalized);
 }
 
-module.exports = { alignLyrics };
+/**
+ * Resolves overlapping segments in a manifest, ensuring consecutive non-overlapping timings.
+ * If segment A and segment B overlap, the end of A is clipped to B's start time.
+ * If this reduces A's duration below 0.1s, A's start time is pushed backward to maintain a 0.1s minimum duration.
+ * This push is propagated recursively backward if A's start time now overlaps with a preceding segment.
+ */
+function resolveManifestOverlaps(manifest) {
+  if (!manifest || manifest.length === 0) return [];
+  
+  // Sort by startTime to ensure chronological order
+  const sorted = [...manifest].map(seg => ({ ...seg })).sort((a, b) => a.startTime - b.startTime);
+  
+  for (let i = 0; i < sorted.length - 1; i++) {
+    const current = sorted[i];
+    const next = sorted[i + 1];
+    
+    if (current.endTime > next.startTime) {
+      // Overlap detected: clip end time of current segment
+      current.endTime = parseFloat(next.startTime.toFixed(2));
+      
+      // If current segment duration is now less than 0.1s, push startTime backward
+      if (parseFloat((current.endTime - current.startTime).toFixed(2)) < 0.1) {
+        current.startTime = parseFloat(Math.max(0, current.endTime - 0.1).toFixed(2));
+        
+        // Propagate backward
+        let j = i;
+        while (j > 0 && sorted[j - 1].endTime > sorted[j].startTime) {
+          sorted[j - 1].endTime = parseFloat(sorted[j].startTime.toFixed(2));
+          if (parseFloat((sorted[j - 1].endTime - sorted[j - 1].startTime).toFixed(2)) < 0.1) {
+            sorted[j - 1].startTime = parseFloat(Math.max(0, sorted[j - 1].endTime - 0.1).toFixed(2));
+          }
+          j--;
+        }
+      }
+    }
+  }
+  
+  // Re-map IDs after sorting to maintain consecutive sequence numbering
+  return sorted.map((seg, idx) => ({
+    ...seg,
+    id: idx + 1
+  }));
+}
+
+module.exports = { alignLyrics, resolveManifestOverlaps };
