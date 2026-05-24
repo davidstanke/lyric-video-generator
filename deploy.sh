@@ -28,18 +28,34 @@ if ! command -v gcloud &> /dev/null; then
   exit 1
 fi
 
-# 1. Initialize and Apply Terraform Configurations
-echo -e "\n${YELLOW}--> Step 1: Provisioning infrastructure via Terraform...${NC}"
+# 1. Bootstrap Remote State Bucket & Provision Infrastructure
+STATE_BUCKET="lyric-video-generator-2026-tfstate"
+PROJECT_ID="lyric-video-generator-2026"
+REGION="us-central1"
+
+echo -e "\n${YELLOW}--> Step 1: Checking remote state GCS bucket...${NC}"
+if ! gcloud storage buckets describe "gs://${STATE_BUCKET}" --project "$PROJECT_ID" &> /dev/null; then
+  echo -e "${YELLOW}Bucket gs://${STATE_BUCKET} does not exist. Creating it...${NC}"
+  gcloud storage buckets create "gs://${STATE_BUCKET}" \
+    --project "$PROJECT_ID" \
+    --location "$REGION" \
+    --uniform-bucket-level-access
+  echo -e "${GREEN}✓ Remote state GCS bucket created.${NC}"
+else
+  echo -e "${GREEN}✓ Remote state GCS bucket already exists.${NC}"
+fi
+
+echo -e "\n${YELLOW}--> Step 2: Initializing and applying Terraform configuration...${NC}"
 cd terraform
 
 echo -e "${YELLOW}Running 'terraform init'...${NC}"
-terraform init
+terraform init -reconfigure
 
 echo -e "${YELLOW}Running 'terraform apply'...${NC}"
 terraform apply -auto-approve
 
-# 2. Extract Terraform State Outputs
-echo -e "\n${YELLOW}--> Step 2: Extracting Terraform output variables...${NC}"
+# 3. Extract Terraform State Outputs
+echo -e "\n${YELLOW}--> Step 3: Extracting Terraform output variables...${NC}"
 PROJECT_ID=$(terraform output -raw project_id)
 REGION=$(terraform output -raw region)
 BUCKET_NAME=$(terraform output -raw gcs_bucket_name)
@@ -55,14 +71,14 @@ echo -e "${GREEN}✓ Service Account:     ${SA_EMAIL}${NC}"
 # Navigate back to root
 cd ..
 
-# 3. Build container with Google Cloud Build
+# 4. Build container with Google Cloud Build
 IMAGE_TAG="${REPO_URL}/lyric-video-generator:latest"
-echo -e "\n${YELLOW}--> Step 3: Triggering Cloud Build for container image...${NC}"
+echo -e "\n${YELLOW}--> Step 4: Triggering Cloud Build for container image...${NC}"
 echo -e "${YELLOW}Building and pushing target: ${IMAGE_TAG}${NC}"
 gcloud builds submit --project "$PROJECT_ID" --tag "$IMAGE_TAG" .
 
-# 4. Deploy to Google Cloud Run
-echo -e "\n${YELLOW}--> Step 4: Deploying Lyric Video Generator to Cloud Run...${NC}"
+# 5. Deploy to Google Cloud Run
+echo -e "\n${YELLOW}--> Step 5: Deploying Lyric Video Generator to Cloud Run...${NC}"
 gcloud run deploy lyric-video-generator \
   --project "$PROJECT_ID" \
   --image "$IMAGE_TAG" \

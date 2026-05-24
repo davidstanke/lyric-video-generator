@@ -6,6 +6,10 @@ terraform {
       version = ">= 4.0, < 6.0"
     }
   }
+  backend "gcs" {
+    bucket = "lyric-video-generator-2026-tfstate"
+    prefix = "terraform/state"
+  }
 }
 
 provider "google" {
