@@ -1,0 +1,36 @@
+# Exclude Node.js dependencies
+node_modules/
+backend/node_modules/
+frontend/node_modules/
+
+# Exclude compiled frontend assets (they are built inside Stage 1 of the Dockerfile)
+frontend/dist/
+
+# Exclude local storage and databases
+storage/
+*.sqlite
+*.db
+
+# Exclude local logs
+logs/
+*.log
+
+# Exclude sensitive credentials
+service-account-key.json
+*.json.key
+
+# Exclude Terraform configurations and state
+terraform/
+.terraform/
+*.tfstate
+*.tfstate.*
+
+# Exclude developer environment metadata and Git
+.git/
+.gitignore
+.DS_Store
+.agents/
+.antigravitycli/
+Dockerfile
+deploy.sh
+README.md

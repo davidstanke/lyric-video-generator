@@ -1,4 +1,3 @@
-const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
 const fs = require('fs');
 
@@ -26,6 +25,7 @@ let db;
 let firestoreClient;
 
 if (!isProd) {
+  const sqlite3 = require('sqlite3').verbose();
   db = new sqlite3.Database(dbPath, (err) => {
     if (err) {
       console.error('Error opening SQLite database:', err.message);
