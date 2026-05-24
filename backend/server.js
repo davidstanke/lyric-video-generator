@@ -9,6 +9,7 @@ const path = require('path');
 const { generateAss } = require('./utils/assGenerator');
 const { execSync } = require('child_process');
 const { dbQuery, storageDir } = require('./database');
+const { uploadFile, deleteFile } = require('./storage');
 const { guessTitle } = require('./utils/metadata');
 const { classifyLyrics } = require('./utils/themeClassifier');
 const { alignLyrics, resolveManifestOverlaps } = require('./utils/lyricAligner');
@@ -59,6 +60,9 @@ try {
 
 // Helper to determine if speech transcription is configured
 function isSpeechConfigured() {
+  if (process.env.NODE_ENV === 'production') {
+    return true; // Use ADC role permissions in production
+  }
   if (!speechClient) return false;
   const keyPath = path.join(__dirname, '../service-account-key.json');
   const envKeyPath = process.env.GOOGLE_APPLICATION_CREDENTIALS;
@@ -78,14 +82,25 @@ app.get('/api/config', (req, res) => {
 // 1. GET /api/projects - List all projects
 app.get('/api/projects', async (req, res) => {
   try {
-    const projects = await dbQuery.all('SELECT id, name, audio_path, video_path, created_at, updated_at FROM projects ORDER BY created_at DESC');
+    const projects = await dbQuery.getAllProjects();
     
     // Format response to provide relative URLs for video_path and audio_path
-    const formattedProjects = projects.map(p => ({
-      ...p,
-      audioUrl: `/audio/${path.basename(p.audio_path)}`,
-      videoUrl: p.video_path ? `/output/${path.basename(p.video_path)}` : null
-    }));
+    const formattedProjects = projects.map(p => {
+      const isUrl = p.audio_path.startsWith('http://') || p.audio_path.startsWith('https://');
+      const audioUrl = isUrl ? p.audio_path : `/audio/${path.basename(p.audio_path)}`;
+      
+      let videoUrl = null;
+      if (p.video_path) {
+        const isVideoUrl = p.video_path.startsWith('http://') || p.video_path.startsWith('https://');
+        videoUrl = isVideoUrl ? p.video_path : `/output/${path.basename(p.video_path)}`;
+      }
+      
+      return {
+        ...p,
+        audioUrl,
+        videoUrl
+      };
+    });
     
     res.json(formattedProjects);
   } catch (error) {
@@ -97,16 +112,25 @@ app.get('/api/projects', async (req, res) => {
 // 2. GET /api/projects/:id - Get specific project details
 app.get('/api/projects/:id', async (req, res) => {
   try {
-    const project = await dbQuery.get('SELECT * FROM projects WHERE id = ?', [req.params.id]);
+    const project = await dbQuery.getProjectById(req.params.id);
     if (!project) {
       return res.status(404).json({ error: 'Project not found' });
     }
     
+    const isUrl = project.audio_path.startsWith('http://') || project.audio_path.startsWith('https://');
+    const audioUrl = isUrl ? project.audio_path : `/audio/${path.basename(project.audio_path)}`;
+    
+    let videoUrl = null;
+    if (project.video_path) {
+      const isVideoUrl = project.video_path.startsWith('http://') || project.video_path.startsWith('https://');
+      videoUrl = isVideoUrl ? project.video_path : `/output/${path.basename(project.video_path)}`;
+    }
+
     res.json({
       ...project,
       manifest: JSON.parse(project.manifest),
-      audioUrl: `/audio/${path.basename(project.audio_path)}`,
-      videoUrl: project.video_path ? `/output/${path.basename(project.video_path)}` : null
+      audioUrl,
+      videoUrl
     });
   } catch (error) {
     console.error('Error retrieving project:', error);
@@ -362,16 +386,22 @@ app.post('/api/projects', async (req, res) => {
       console.error('Failed to classify lyrics:', themeError);
     }
 
-    // Save project in SQLite database
-    const insertResult = await dbQuery.run(
-      'INSERT INTO projects (name, audio_path, manifest, background_color) VALUES (?, ?, ?, ?)',
-      [projectName, filePath, JSON.stringify(manifest), suggestedColor]
-    );
+    // Upload final MP3 file to storage and get target path/URL
+    const audioFilename = path.basename(filePath);
+    const finalAudioPath = await uploadFile(filePath, 'audio', audioFilename);
+
+    // Save project in database (SQLite or Firestore)
+    const insertResult = await dbQuery.createProject({
+      name: projectName,
+      audio_path: finalAudioPath,
+      manifest: manifest,
+      background_color: suggestedColor
+    });
 
     res.json({
       id: insertResult.id,
       name: projectName,
-      audioPath: filePath,
+      audioPath: finalAudioPath,
       manifest: manifest,
       transcriptionStatus: transcriptionStatus,
       backgroundColor: suggestedColor
@@ -405,17 +435,14 @@ app.put('/api/projects/:id/manifest', async (req, res) => {
     }
 
     // Check project exists
-    const project = await dbQuery.get('SELECT id FROM projects WHERE id = ?', [req.params.id]);
+    const project = await dbQuery.getProjectById(req.params.id);
     if (!project) {
       return res.status(404).json({ error: 'Project not found' });
     }
 
     const resolvedManifest = resolveManifestOverlaps(manifest);
 
-    await dbQuery.run(
-      'UPDATE projects SET manifest = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
-      [JSON.stringify(resolvedManifest), req.params.id]
-    );
+    await dbQuery.updateProjectManifest(req.params.id, resolvedManifest);
 
     res.json({ success: true });
   } catch (error) {
@@ -433,15 +460,12 @@ app.put('/api/projects/:id/rename', async (req, res) => {
     }
 
     // Check project exists
-    const project = await dbQuery.get('SELECT id FROM projects WHERE id = ?', [req.params.id]);
+    const project = await dbQuery.getProjectById(req.params.id);
     if (!project) {
       return res.status(404).json({ error: 'Project not found' });
     }
 
-    await dbQuery.run(
-      'UPDATE projects SET name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
-      [name.trim(), req.params.id]
-    );
+    await dbQuery.renameProject(req.params.id, name.trim());
 
     res.json({ success: true, name: name.trim() });
   } catch (error) {
@@ -459,15 +483,12 @@ app.put('/api/projects/:id/background-color', async (req, res) => {
     }
 
     // Check project exists
-    const project = await dbQuery.get('SELECT id FROM projects WHERE id = ?', [req.params.id]);
+    const project = await dbQuery.getProjectById(req.params.id);
     if (!project) {
       return res.status(404).json({ error: 'Project not found' });
     }
 
-    await dbQuery.run(
-      'UPDATE projects SET background_color = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
-      [backgroundColor.trim(), req.params.id]
-    );
+    await dbQuery.updateProjectBackgroundColor(req.params.id, backgroundColor.trim());
 
     res.json({ success: true, backgroundColor: backgroundColor.trim() });
   } catch (error) {
@@ -479,7 +500,7 @@ app.put('/api/projects/:id/background-color', async (req, res) => {
 // 5. POST /api/projects/:id/render - Render video
 app.post('/api/projects/:id/render', async (req, res) => {
   try {
-    const project = await dbQuery.get('SELECT * FROM projects WHERE id = ?', [req.params.id]);
+    const project = await dbQuery.getProjectById(req.params.id);
     if (!project) {
       return res.status(404).json({ error: 'Project not found' });
     }
@@ -487,8 +508,35 @@ app.post('/api/projects/:id/render', async (req, res) => {
     const audioPath = project.audio_path;
     const manifest = JSON.parse(project.manifest);
 
-    if (!fs.existsSync(audioPath)) {
-      return res.status(404).json({ error: 'Audio file not found on disk' });
+    let localAudioPath = audioPath;
+    let isTempAudio = false;
+
+    // In production, the audio file is stored as a GCS URL. Download it to a local temp file for FFmpeg to process.
+    if (audioPath.startsWith('http://') || audioPath.startsWith('https://')) {
+      console.log(`Downloading audio file for rendering from GCS: ${audioPath}`);
+      const tempFilename = `render_audio_${Date.now()}${path.extname(audioPath) || '.mp3'}`;
+      localAudioPath = path.join(storageDir, 'audio', tempFilename);
+      
+      const { Storage } = require('@google-cloud/storage');
+      const storage = new Storage({
+        projectId: process.env.GCP_PROJECT_ID || process.env.GOOGLE_CLOUD_PROJECT || 'lyric-video-generator-2026',
+      });
+      const bucketName = process.env.GCS_BUCKET_NAME || 'lyric-video-generator-2026-assets';
+      
+      // Parse remote path from URL (https://storage.googleapis.com/bucket-name/audio/filename.mp3)
+      const marker = `https://storage.googleapis.com/${bucketName}/`;
+      if (!audioPath.startsWith(marker)) {
+        throw new Error(`Invalid or mismatching audio GCS URL: ${audioPath}`);
+      }
+      const gcsPath = audioPath.replace(marker, '');
+      
+      await storage.bucket(bucketName).file(gcsPath).download({ destination: localAudioPath });
+      console.log(`Successfully downloaded GCS audio file to local path: ${localAudioPath}`);
+      isTempAudio = true;
+    } else {
+      if (!fs.existsSync(localAudioPath)) {
+        return res.status(404).json({ error: 'Audio file not found on disk' });
+      }
     }
 
     const assContent = generateAss(manifest, project.name);
@@ -531,7 +579,7 @@ app.post('/api/projects/:id/render', async (req, res) => {
     command
       .input(`color=c=${cleanBgColor}:s=1280x720`)
       .inputFormat('lavfi')
-      .input(audioPath)
+      .input(localAudioPath)
       .outputOptions(['-shortest'])
       .videoFilters(`subtitles='${escapedAssPath}':fontsdir='${escapedFontsDir}'`)
       .audioCodec('aac')
@@ -539,24 +587,33 @@ app.post('/api/projects/:id/render', async (req, res) => {
       .on('end', async () => {
         console.log('FFmpeg processing finished.');
         
-        // Save output path to database
-        await dbQuery.run(
-          'UPDATE projects SET video_path = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
-          [outputPath, req.params.id]
-        );
+        // Upload finished video to storage and get target path/URL
+        const finalVideoPath = await uploadFile(outputPath, 'video', outputFilename);
 
-        // Delete temporary subtitle file
+        // Save output path to database
+        await dbQuery.updateProjectVideoPath(req.params.id, finalVideoPath);
+
+        // Delete temporary subtitle file and temp audio file
         try { fs.unlinkSync(assPath); } catch (e) {}
+        if (isTempAudio && fs.existsSync(localAudioPath)) {
+          try { fs.unlinkSync(localAudioPath); } catch (e) {}
+        }
+
+        const isUrl = finalVideoPath.startsWith('http://') || finalVideoPath.startsWith('https://');
+        const videoUrl = isUrl ? finalVideoPath : `/output/${outputFilename}`;
 
         res.json({ 
           success: true, 
-          videoUrl: `/output/${outputFilename}`,
-          videoPath: outputPath
+          videoUrl,
+          videoPath: finalVideoPath
         });
       })
       .on('error', (err) => {
         console.error('Error in FFmpeg processing:', err);
         try { fs.unlinkSync(assPath); } catch (e) {}
+        if (isTempAudio && fs.existsSync(localAudioPath)) {
+          try { fs.unlinkSync(localAudioPath); } catch (e) {}
+        }
         res.status(500).json({ error: 'Error generating video', details: err.message });
       })
       .save(outputPath);
@@ -570,23 +627,23 @@ app.post('/api/projects/:id/render', async (req, res) => {
 // 6. DELETE /api/projects/:id - Delete project and files
 app.delete('/api/projects/:id', async (req, res) => {
   try {
-    const project = await dbQuery.get('SELECT * FROM projects WHERE id = ?', [req.params.id]);
+    const project = await dbQuery.getProjectById(req.params.id);
     if (!project) {
       return res.status(404).json({ error: 'Project not found' });
     }
 
-    // Delete audio file
-    if (project.audio_path && fs.existsSync(project.audio_path)) {
-      try { fs.unlinkSync(project.audio_path); } catch (e) { console.error('Failed to delete audio file:', e.message); }
+    // Delete audio file (handles local or GCS natively)
+    if (project.audio_path) {
+      await deleteFile(project.audio_path);
     }
 
-    // Delete video file
-    if (project.video_path && fs.existsSync(project.video_path)) {
-      try { fs.unlinkSync(project.video_path); } catch (e) { console.error('Failed to delete video file:', e.message); }
+    // Delete video file (handles local or GCS natively)
+    if (project.video_path) {
+      await deleteFile(project.video_path);
     }
 
     // Delete database entry
-    await dbQuery.run('DELETE FROM projects WHERE id = ?', [req.params.id]);
+    await dbQuery.deleteProject(req.params.id);
 
     res.json({ success: true });
   } catch (error) {
@@ -595,9 +652,19 @@ app.delete('/api/projects/:id', async (req, res) => {
   }
 });
 
-// Expose static files from storage directory
+// Expose static files from storage directory (primarily for local mode)
 app.use('/output', express.static(path.join(storageDir, 'video')));
 app.use('/audio', express.static(path.join(storageDir, 'audio')));
+
+// Serve production frontend assets if running in production mode
+if (process.env.NODE_ENV === 'production') {
+  const frontendDistPath = path.join(__dirname, '../frontend/dist');
+  console.log(`Serving frontend static build from: ${frontendDistPath}`);
+  app.use(express.static(frontendDistPath));
+  app.get('*', (req, res) => {
+    res.sendFile(path.join(frontendDistPath, 'index.html'));
+  });
+}
 
 app.listen(port, () => {
   console.log(`Backend server running on port ${port}`);

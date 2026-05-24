@@ -1,19 +1,28 @@
 const fs = require('fs');
 const path = require('path');
 
-let projectId = null;
+// Detect GCP Project ID from environment or fallback to service-account-key.json
+let projectId = process.env.GCP_PROJECT_ID || process.env.GOOGLE_CLOUD_PROJECT;
 let aiModel = null;
 
-// Self-detect GCP Project ID from service-account-key.json
 try {
   const keyPath = path.join(__dirname, '..', '..', 'service-account-key.json');
   if (fs.existsSync(keyPath)) {
     const keyData = JSON.parse(fs.readFileSync(keyPath, 'utf8'));
     projectId = keyData.project_id;
-    console.log(`--> Theme Classifier detected GCP Project ID: ${projectId}`);
+    console.log(`--> Theme Classifier detected GCP Project ID from service-account-key.json: ${projectId}`);
   }
 } catch (e) {
   console.warn('Error reading project ID from service-account-key.json:', e.message);
+}
+
+// Fallback default project ID if running in production
+if (!projectId && process.env.NODE_ENV === 'production') {
+  projectId = 'lyric-video-generator-2026';
+}
+
+if (projectId) {
+  console.log(`--> Theme Classifier using GCP Project ID: ${projectId}`);
 }
 
 // Initialize Vertex AI if project ID is resolved
