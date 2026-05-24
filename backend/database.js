@@ -3,22 +3,20 @@ const fs = require('fs');
 
 const isProd = process.env.NODE_ENV === 'production';
 
-// Ensure storage directory exists at the root (for local mode)
+// Ensure storage directory exists at the root (required as a temp/scratch storage on Cloud Run and local modes)
 const storageDir = path.join(__dirname, '..', 'storage');
-if (!isProd && !fs.existsSync(storageDir)) {
+if (!fs.existsSync(storageDir)) {
   fs.mkdirSync(storageDir, { recursive: true });
 }
 
-// Subdirectories inside storage (for local mode)
+// Subdirectories inside storage (required for Multer uploads, transcodings, and FFmpeg processing)
 const subdirs = ['audio', 'video', 'subtitles'];
-if (!isProd) {
-  subdirs.forEach(dir => {
-    const p = path.join(storageDir, dir);
-    if (!fs.existsSync(p)) {
-      fs.mkdirSync(p, { recursive: true });
-    }
-  });
-}
+subdirs.forEach(dir => {
+  const p = path.join(storageDir, dir);
+  if (!fs.existsSync(p)) {
+    fs.mkdirSync(p, { recursive: true });
+  }
+});
 
 const dbPath = path.join(storageDir, 'database.sqlite');
 let db;
