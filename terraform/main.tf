@@ -163,3 +163,17 @@ resource "google_storage_bucket_iam_member" "sa_bucket_access" {
   role   = "roles/storage.objectAdmin"
   member = "serviceAccount:${google_service_account.cloud_run_sa.email}"
 }
+
+# Grant Artifact Registry Writer to the Compute Engine default service account (so Cloud Build can push built images)
+resource "google_project_iam_member" "compute_registry_access" {
+  project = var.project_id
+  role    = "roles/artifactregistry.writer"
+  member  = "serviceAccount:${data.google_project.project.number}-compute@developer.gserviceaccount.com"
+}
+
+# Grant Logs Writer to the Compute Engine default service account (resolves Cloud Logging permission warning)
+resource "google_project_iam_member" "compute_logging_access" {
+  project = var.project_id
+  role    = "roles/logging.logWriter"
+  member  = "serviceAccount:${data.google_project.project.number}-compute@developer.gserviceaccount.com"
+}
