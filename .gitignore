@@ -6,3 +6,8 @@ storage/
 .DS_Store
 .antigravitycli
 node_modules/
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+*.tfvars.json
