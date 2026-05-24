@@ -94,6 +94,13 @@ resource "google_storage_bucket_iam_member" "cloudbuild_staging_access" {
   member = "serviceAccount:${data.google_project.project.number}@cloudbuild.gserviceaccount.com"
 }
 
+# Grant Storage Object Admin on the staging bucket to the Compute default service account (often used by Cloud Build)
+resource "google_storage_bucket_iam_member" "compute_staging_access" {
+  bucket = google_storage_bucket.build_staging_bucket.name
+  role   = "roles/storage.objectAdmin"
+  member = "serviceAccount:${data.google_project.project.number}-compute@developer.gserviceaccount.com"
+}
+
 # ==============================================================================
 # 3. Google Cloud Firestore Database (Native Mode)
 # ==============================================================================
