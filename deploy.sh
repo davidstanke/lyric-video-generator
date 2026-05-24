@@ -59,12 +59,14 @@ echo -e "\n${YELLOW}--> Step 3: Extracting Terraform output variables...${NC}"
 PROJECT_ID=$(terraform output -raw project_id)
 REGION=$(terraform output -raw region)
 BUCKET_NAME=$(terraform output -raw gcs_bucket_name)
+STAGING_BUCKET=$(terraform output -raw cloudbuild_staging_bucket_name)
 REPO_URL=$(terraform output -raw artifact_registry_repo_url)
 SA_EMAIL=$(terraform output -raw service_account_email)
 
 echo -e "${GREEN}✓ Project ID:          ${PROJECT_ID}${NC}"
 echo -e "${GREEN}✓ Region:              ${REGION}${NC}"
 echo -e "${GREEN}✓ GCS Bucket:          ${BUCKET_NAME}${NC}"
+echo -e "${GREEN}✓ Build Staging:       ${STAGING_BUCKET}${NC}"
 echo -e "${GREEN}✓ Artifact Registry:   ${REPO_URL}${NC}"
 echo -e "${GREEN}✓ Service Account:     ${SA_EMAIL}${NC}"
 
@@ -75,7 +77,10 @@ cd ..
 IMAGE_TAG="${REPO_URL}/lyric-video-generator:latest"
 echo -e "\n${YELLOW}--> Step 4: Triggering Cloud Build for container image...${NC}"
 echo -e "${YELLOW}Building and pushing target: ${IMAGE_TAG}${NC}"
-gcloud builds submit --project "$PROJECT_ID" --tag "$IMAGE_TAG" .
+gcloud builds submit \
+  --project "$PROJECT_ID" \
+  --gcs-source-staging-dir "gs://${STAGING_BUCKET}/source" \
+  --tag "$IMAGE_TAG" .
 
 # 5. Deploy to Google Cloud Run
 echo -e "\n${YELLOW}--> Step 5: Deploying Lyric Video Generator to Cloud Run...${NC}"

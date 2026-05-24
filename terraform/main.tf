@@ -70,6 +70,30 @@ resource "google_storage_bucket_iam_member" "public_read" {
   member = "allUsers"
 }
 
+# Dedicated Private GCS Bucket for Cloud Build Staging
+resource "google_storage_bucket" "build_staging_bucket" {
+  name          = "${var.project_id}-cloudbuild-staging"
+  location      = var.region
+  force_destroy = true # Safe to purge staging files on destroy
+
+  # Enable uniform bucket-level access (clean and standard)
+  uniform_bucket_level_access = true
+
+  # Keep it private
+  public_access_prevention = "enforced"
+
+  depends_on = [google_project_service.enabled_apis]
+}
+
+data "google_project" "project" {}
+
+# Grant Storage Object Admin on the staging bucket to the Cloud Build service account
+resource "google_storage_bucket_iam_member" "cloudbuild_staging_access" {
+  bucket = google_storage_bucket.build_staging_bucket.name
+  role   = "roles/storage.objectAdmin"
+  member = "serviceAccount:${data.google_project.project.number}@cloudbuild.gserviceaccount.com"
+}
+
 # ==============================================================================
 # 3. Google Cloud Firestore Database (Native Mode)
 # ==============================================================================

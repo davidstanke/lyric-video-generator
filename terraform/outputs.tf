@@ -27,3 +27,8 @@ output "service_account_email" {
   description = "The email address of the dedicated Cloud Run service account."
   value       = google_service_account.cloud_run_sa.email
 }
+
+output "cloudbuild_staging_bucket_name" {
+  description = "The name of the GCS bucket used for Cloud Build staging."
+  value       = google_storage_bucket.build_staging_bucket.name
+}
