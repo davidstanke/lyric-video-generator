@@ -128,7 +128,7 @@ app.get('/api/projects/:id', async (req, res) => {
 
     res.json({
       ...project,
-      manifest: JSON.parse(project.manifest),
+      manifest: typeof project.manifest === 'string' ? JSON.parse(project.manifest) : project.manifest,
       audioUrl,
       videoUrl
     });
@@ -506,7 +506,7 @@ app.post('/api/projects/:id/render', async (req, res) => {
     }
 
     const audioPath = project.audio_path;
-    const manifest = JSON.parse(project.manifest);
+    const manifest = typeof project.manifest === 'string' ? JSON.parse(project.manifest) : project.manifest;
 
     let localAudioPath = audioPath;
     let isTempAudio = false;

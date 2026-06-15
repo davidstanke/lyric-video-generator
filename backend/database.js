@@ -195,10 +195,11 @@ const dbQuery = {
       await docRef.set(projectData);
       return { id: docRef.id };
     } else {
+      const manifestStr = typeof manifest === 'string' ? manifest : JSON.stringify(manifest);
       return new Promise((resolve, reject) => {
         db.run(
           'INSERT INTO projects (name, audio_path, manifest, background_color) VALUES (?, ?, ?, ?)',
-          [name, audio_path, manifest, background_color],
+          [name, audio_path, manifestStr, background_color],
           function (err) {
             if (err) reject(err);
             else resolve({ id: this.lastID });
@@ -217,10 +218,11 @@ const dbQuery = {
       });
       return { success: true };
     } else {
+      const manifestStr = typeof manifest === 'string' ? manifest : JSON.stringify(manifest);
       return new Promise((resolve, reject) => {
         db.run(
           'UPDATE projects SET manifest = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
-          [manifest, id],
+          [manifestStr, id],
           (err) => {
             if (err) reject(err);
             else resolve({ success: true });
