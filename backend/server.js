@@ -591,6 +591,62 @@ app.post('/api/projects/:id/replace-audio', async (req, res) => {
   }
 });
 
+// 4e. GET /api/projects/:id/download - Download project's rendered video file with custom filename and MIME headers
+app.get('/api/projects/:id/download', async (req, res) => {
+  try {
+    const project = await dbQuery.getProjectById(req.params.id);
+    if (!project || !project.video_path) {
+      return res.status(404).json({ error: 'Video file not found or project does not exist' });
+    }
+
+    const safeFilename = `${project.name.replace(/[^a-zA-Z0-9_-]+/g, '_')}.mp4`;
+    const isUrl = project.video_path.startsWith('http://') || project.video_path.startsWith('https://');
+
+    if (isUrl) {
+      const { Storage } = require('@google-cloud/storage');
+      const storage = new Storage({
+        projectId: process.env.GCP_PROJECT_ID || process.env.GOOGLE_CLOUD_PROJECT || 'lyric-video-generator-2026',
+      });
+      const bucketName = process.env.GCS_BUCKET_NAME || 'lyric-video-generator-2026-assets';
+      
+      const marker = `https://storage.googleapis.com/${bucketName}/`;
+      const relativePath = project.video_path.replace(marker, '');
+
+      console.log(`Downloading video from GCS for attachment stream: ${relativePath}`);
+      const file = storage.bucket(bucketName).file(relativePath);
+
+      res.setHeader('Content-Type', 'video/mp4');
+      res.setHeader('Content-Disposition', `attachment; filename="${safeFilename}"`);
+
+      file.createReadStream()
+        .on('error', (err) => {
+          console.error('GCS download stream error:', err);
+          if (!res.headersSent) {
+            res.status(500).json({ error: 'Failed to download file from cloud storage' });
+          }
+        })
+        .pipe(res);
+    } else {
+      if (!fs.existsSync(project.video_path)) {
+        return res.status(404).json({ error: 'Video file not found on server disk' });
+      }
+
+      console.log(`Downloading local video file: ${project.video_path}`);
+      res.download(project.video_path, safeFilename, (err) => {
+        if (err) {
+          console.error('Error in local file res.download:', err);
+          if (!res.headersSent) {
+            res.status(500).json({ error: 'Failed to send file download' });
+          }
+        }
+      });
+    }
+  } catch (error) {
+    console.error('Error in download endpoint:', error);
+    res.status(500).json({ error: 'Failed to initiate video download', details: error.message });
+  }
+});
+
 // 5. POST /api/projects/:id/render - Render video
 app.post('/api/projects/:id/render', async (req, res) => {
   try {
