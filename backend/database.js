@@ -276,6 +276,28 @@ const dbQuery = {
     }
   },
 
+  async updateProjectAudioPath(id, audioPath) {
+    if (isProd) {
+      const docRef = firestoreClient.collection('projects').doc(id.toString());
+      await docRef.update({
+        audio_path: audioPath,
+        updated_at: new Date()
+      });
+      return { success: true };
+    } else {
+      return new Promise((resolve, reject) => {
+        db.run(
+          'UPDATE projects SET audio_path = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+          [audioPath, id],
+          (err) => {
+            if (err) reject(err);
+            else resolve({ success: true });
+          }
+        );
+      });
+    }
+  },
+
   async updateProjectVideoPath(id, videoPath) {
     if (isProd) {
       const docRef = firestoreClient.collection('projects').doc(id.toString());

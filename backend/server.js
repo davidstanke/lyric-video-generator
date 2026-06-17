@@ -497,6 +497,100 @@ app.put('/api/projects/:id/background-color', async (req, res) => {
   }
 });
 
+// 4d. POST /api/projects/:id/replace-audio - Replace project's audio file
+app.post('/api/projects/:id/replace-audio', async (req, res) => {
+  try {
+    const { tempPath, keepTimings } = req.body;
+    if (!tempPath || !fs.existsSync(tempPath)) {
+      return res.status(400).json({ error: 'Valid temporary audio file path is required' });
+    }
+
+    // Check project exists
+    const project = await dbQuery.getProjectById(req.params.id);
+    if (!project) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+
+    const title = project.name;
+    const sanitizedTitle = title.toLowerCase()
+      .replace(/[^a-z0-9]+/g, '_')
+      .replace(/^_+|_+$/g, '');
+    const cleanTitle = sanitizedTitle || 'untitled_track';
+    const ext = path.extname(tempPath).toLowerCase();
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    const newFilename = `${cleanTitle}-replaced-${uniqueSuffix}${ext}`;
+    const newFilePath = path.join(path.dirname(tempPath), newFilename);
+
+    try {
+      fs.renameSync(tempPath, newFilePath);
+    } catch (renameErr) {
+      console.error('Error renaming temporary audio file:', renameErr);
+      return res.status(500).json({ error: 'Failed to organize audio file on disk', details: renameErr.message });
+    }
+
+    let filePath = newFilePath;
+    const originalExt = path.extname(filePath).toLowerCase();
+
+    // If the file is not an MP3, transcode it to MP3
+    if (originalExt !== '.mp3') {
+      const mp3Path = filePath.replace(path.extname(filePath), '.mp3');
+      console.log(`Transcoding replaced non-MP3 file (${originalExt}) to MP3: ${mp3Path}`);
+      try {
+        execSync(`ffmpeg -i "${filePath}" -codec:a libmp3lame -qscale:a 2 "${mp3Path}"`);
+        // Delete original non-MP3 file immediately
+        try { fs.unlinkSync(filePath); } catch (e) {}
+        filePath = mp3Path;
+      } catch (transcodeErr) {
+        console.error('Transcoding replaced audio to MP3 failed:', transcodeErr);
+        // Clean up original uploaded file on error
+        try { fs.unlinkSync(filePath); } catch (e) {}
+        return res.status(500).json({ error: 'Failed to process audio format', details: transcodeErr.message });
+      }
+    }
+
+    // Upload final MP3 file to storage and get target path/URL
+    const audioFilename = path.basename(filePath);
+    const finalAudioPath = await uploadFile(filePath, 'audio', audioFilename);
+
+    // Update project in database
+    await dbQuery.updateProjectAudioPath(req.params.id, finalAudioPath);
+
+    let updatedManifest = null;
+    // If not keeping timings, reset all start and end times to 0
+    if (keepTimings === false || keepTimings === 'false') {
+      const currentManifest = typeof project.manifest === 'string' ? JSON.parse(project.manifest) : project.manifest;
+      if (Array.isArray(currentManifest)) {
+        const resetManifest = currentManifest.map(segment => ({
+          ...segment,
+          startTime: 0,
+          endTime: 0
+        }));
+        await dbQuery.updateProjectManifest(req.params.id, resetManifest);
+        updatedManifest = resetManifest;
+      }
+    }
+
+    // Note: Per user's direct specification, we do NOT delete the old audio file or reset/delete the old video file.
+    // We just return the successful response with updated paths.
+    
+    // Fetch latest project state to return complete info
+    const updatedProject = await dbQuery.getProjectById(req.params.id);
+
+    res.json({
+      success: true,
+      audioPath: finalAudioPath,
+      audioUrl: finalAudioPath.startsWith('http://') || finalAudioPath.startsWith('https://') 
+        ? finalAudioPath 
+        : `/audio/${path.basename(finalAudioPath)}`,
+      manifest: updatedManifest || (typeof updatedProject.manifest === 'string' ? JSON.parse(updatedProject.manifest) : updatedProject.manifest)
+    });
+
+  } catch (error) {
+    console.error('Error replacing project audio:', error);
+    res.status(500).json({ error: 'Failed to replace project audio', details: error.message });
+  }
+});
+
 // 5. POST /api/projects/:id/render - Render video
 app.post('/api/projects/:id/render', async (req, res) => {
   try {

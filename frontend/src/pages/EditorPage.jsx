@@ -266,6 +266,64 @@ function EditorPage() {
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [editedTitle, setEditedTitle] = useState('');
   const [isRenaming, setIsRenaming] = useState(false);
+
+  // Replace audio states
+  const [isReplaceAudioModalOpen, setIsReplaceAudioModalOpen] = useState(false);
+  const [selectedAudioFile, setSelectedAudioFile] = useState(null);
+  const [keepTimings, setKeepTimings] = useState(true);
+  const [isReplacingAudio, setIsReplacingAudio] = useState(false);
+  const [replaceAudioError, setReplaceAudioError] = useState(null);
+
+  const handleReplaceAudio = async () => {
+    if (!selectedAudioFile) return;
+
+    setIsReplacingAudio(true);
+    setReplaceAudioError(null);
+
+    const formData = new FormData();
+    formData.append('audio', selectedAudioFile);
+
+    try {
+      // 1. Upload and probe the file to get a tempPath
+      const probeResponse = await axios.post('/api/projects/probe', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data'
+        }
+      });
+      
+      const { tempPath } = probeResponse.data;
+
+      // 2. Call our replace-audio endpoint with tempPath and keepTimings
+      const replaceResponse = await axios.post(`/api/projects/${id}/replace-audio`, {
+        tempPath,
+        keepTimings: !!keepTimings
+      });
+
+      // 3. Update the state
+      const { audioUrl, manifest: newManifest } = replaceResponse.data;
+      
+      setProject(prev => ({
+        ...prev,
+        audio_path: replaceResponse.data.audioPath,
+        audioUrl
+      }));
+      setManifest(typeof newManifest === 'string' ? JSON.parse(newManifest) : newManifest);
+
+      // Force the audio player to reload the new audio source
+      if (audioRef.current) {
+        audioRef.current.load();
+      }
+
+      showToast('Audio file replaced successfully!');
+      setIsReplaceAudioModalOpen(false);
+      setSelectedAudioFile(null);
+    } catch (err) {
+      console.error('Error replacing audio file:', err);
+      setReplaceAudioError(err.response?.data?.error || 'Failed to replace audio file.');
+    } finally {
+      setIsReplacingAudio(false);
+    }
+  };
   
   // Audio state & reference
   const [currentTime, setCurrentTime] = useState(0);
@@ -683,8 +741,45 @@ function EditorPage() {
             </button>
           </div>
         )}
-        <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', margin: 0 }}>
+        <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
           Original Audio Path: <code style={{ background: 'rgba(255,255,255,0.05)', padding: '0.1rem 0.3rem', borderRadius: '4px', wordBreak: 'break-all' }}>{project.audio_path}</code>
+          <button 
+            onClick={() => {
+              setSelectedAudioFile(null);
+              setReplaceAudioError(null);
+              setKeepTimings(true);
+              setIsReplaceAudioModalOpen(true);
+            }}
+            style={{
+              background: 'rgba(139, 92, 246, 0.15)',
+              border: '1px solid var(--accent-light)',
+              borderRadius: '6px',
+              color: 'var(--accent-light)',
+              padding: '0.2rem 0.4rem',
+              cursor: 'pointer',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '0.25rem',
+              fontSize: '0.75rem',
+              fontWeight: '600',
+              transition: 'all 0.2s'
+            }}
+            onMouseOver={(e) => {
+              e.currentTarget.style.background = 'var(--accent-light)';
+              e.currentTarget.style.color = '#fff';
+            }}
+            onMouseOut={(e) => {
+              e.currentTarget.style.background = 'rgba(139, 92, 246, 0.15)';
+              e.currentTarget.style.color = 'var(--accent-light)';
+            }}
+            title="Replace Audio File"
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 20h9"></path>
+              <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
+            </svg>
+            Replace
+          </button>
         </p>
       </div>
 
@@ -1081,6 +1176,160 @@ function EditorPage() {
                 <line x1="6" y1="6" x2="18" y2="18"></line>
               </svg>
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Replace Audio Modal */}
+      {isReplaceAudioModalOpen && (
+        <div className="modal-overlay" style={{ zIndex: 1000 }}>
+          <div className="modal-card" style={{ maxWidth: '480px' }}>
+            <div className="modal-header">
+              <div className="modal-icon-container" style={{ background: 'rgba(139, 92, 246, 0.15)', color: 'var(--accent-light)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M9 18V5l12-2v13"></path>
+                  <circle cx="6" cy="18" r="3"></circle>
+                  <circle cx="18" cy="16" r="3"></circle>
+                </svg>
+              </div>
+              <h3 className="modal-title">Replace Project Audio</h3>
+            </div>
+            <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+              <p style={{ fontSize: '0.9rem', margin: 0, color: 'var(--text-muted)' }}>
+                Upload a new audio track to replace the current audio of <strong>{project.name}</strong>.
+              </p>
+
+              {/* Upload Drag & Drop Zone */}
+              <div 
+                style={{
+                  border: '2px dashed var(--glass-border)',
+                  borderRadius: '12px',
+                  padding: '2rem 1.5rem',
+                  textAlign: 'center',
+                  background: 'rgba(255, 255, 255, 0.02)',
+                  cursor: 'pointer',
+                  position: 'relative',
+                  transition: 'all 0.2s'
+                }}
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  e.currentTarget.style.borderColor = 'var(--accent-light)';
+                  e.currentTarget.style.background = 'rgba(139, 92, 246, 0.05)';
+                }}
+                onDragLeave={(e) => {
+                  e.preventDefault();
+                  e.currentTarget.style.borderColor = 'var(--glass-border)';
+                  e.currentTarget.style.background = 'rgba(255, 255, 255, 0.02)';
+                }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  e.currentTarget.style.borderColor = 'var(--glass-border)';
+                  e.currentTarget.style.background = 'rgba(255, 255, 255, 0.02)';
+                  if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+                    setSelectedAudioFile(e.dataTransfer.files[0]);
+                  }
+                }}
+                onClick={() => document.getElementById('replace-audio-input').click()}
+              >
+                <input 
+                  id="replace-audio-input"
+                  type="file"
+                  accept="audio/*"
+                  style={{ display: 'none' }}
+                  onChange={(e) => {
+                    if (e.target.files && e.target.files[0]) {
+                      setSelectedAudioFile(e.target.files[0]);
+                    }
+                  }}
+                />
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginBottom: '0.75rem' }}>
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                  <polyline points="17 8 12 3 7 8"></polyline>
+                  <line x1="12" y1="3" x2="12" y2="15"></line>
+                </svg>
+                {selectedAudioFile ? (
+                  <div style={{ color: 'var(--text-main)', fontWeight: '600', fontSize: '0.9rem', wordBreak: 'break-all' }}>
+                    {selectedAudioFile.name}
+                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: '400', marginTop: '0.25rem' }}>
+                      {(selectedAudioFile.size / (1024 * 1024)).toFixed(2)} MB
+                    </div>
+                  </div>
+                ) : (
+                  <div>
+                    <div style={{ fontWeight: '600', fontSize: '0.9rem', color: 'var(--text-main)' }}>Click to upload or drag & drop</div>
+                    <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>Supports MP3, WAV, M4A, etc.</div>
+                  </div>
+                )}
+              </div>
+
+              {/* Keep Timings Toggle */}
+              <label 
+                style={{
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  gap: '0.75rem',
+                  cursor: 'pointer',
+                  padding: '0.75rem',
+                  background: 'rgba(255, 255, 255, 0.02)',
+                  borderRadius: '8px',
+                  border: '1px solid var(--glass-border)',
+                  textAlign: 'left'
+                }}
+              >
+                <input 
+                  type="checkbox"
+                  checked={keepTimings}
+                  onChange={(e) => setKeepTimings(e.target.checked)}
+                  style={{ marginTop: '0.25rem', accentColor: 'var(--accent-light)' }}
+                  disabled={isReplacingAudio}
+                />
+                <div>
+                  <div style={{ fontSize: '0.9rem', fontWeight: '600', color: 'var(--text-main)' }}>Preserve current lyric timings</div>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.15rem', lineHeight: '1.4' }}>
+                    Keep the current subtitle timing stamps. Uncheck this if you want to reset all timings to 00:00.0 and re-sync the lyrics to the new audio.
+                  </div>
+                </div>
+              </label>
+
+              {replaceAudioError && (
+                <div style={{ color: '#ef4444', fontSize: '0.85rem', background: 'rgba(239, 68, 68, 0.1)', padding: '0.75rem', borderRadius: '8px', border: '1px solid rgba(239, 68, 68, 0.2)', textAlign: 'left' }}>
+                  {replaceAudioError}
+                </div>
+              )}
+            </div>
+            <div className="modal-actions">
+              <button 
+                className="btn btn-secondary" 
+                style={{ padding: '0.5rem 1.25rem', fontSize: '0.9rem' }} 
+                onClick={() => {
+                  if (!isReplacingAudio) {
+                    setIsReplaceAudioModalOpen(false);
+                    setSelectedAudioFile(null);
+                  }
+                }}
+                disabled={isReplacingAudio}
+              >
+                Cancel
+              </button>
+              <button 
+                className="btn" 
+                style={{ padding: '0.5rem 1.25rem', fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }} 
+                onClick={handleReplaceAudio}
+                disabled={isReplacingAudio || !selectedAudioFile}
+              >
+                {isReplacingAudio ? (
+                  <>
+                    <svg className="animate-spin" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                      <circle cx="12" cy="12" r="10" stroke="rgba(255,255,255,0.2)"></circle>
+                      <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor"></path>
+                    </svg>
+                    Processing...
+                  </>
+                ) : (
+                  'Replace Audio'
+                )}
+              </button>
+            </div>
           </div>
         </div>
       )}
