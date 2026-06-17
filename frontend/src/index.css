@@ -629,8 +629,10 @@ audio::-webkit-media-controls-mute-button {
   -webkit-backdrop-filter: blur(10px);
   z-index: 9999;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
+  padding: 10vh 1rem 2rem 1rem;
+  overflow-y: auto;
   animation: modal-fade-in 0.2s ease-out forwards;
 }
 
