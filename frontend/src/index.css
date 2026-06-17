@@ -7,7 +7,7 @@
   --accent-light: #8b5cf6;
   --accent-hover: #5b21b6;
   --text-main: #f8fafc;
-  --text-muted: #94a3b8;
+  --text-muted: #6f7a8a;
   --glass-bg: rgba(30, 41, 59, 0.7);
   --glass-border: rgba(255, 255, 255, 0.1);
 }
@@ -375,7 +375,7 @@ audio::-webkit-media-controls-mute-button {
 
 .navbar-bug-link {
   color: var(--text-muted);
-  font-size: 0.85rem;
+  font-size: 0.75rem;
   font-weight: 500;
   text-decoration: none;
   transition: color 0.25s ease, transform 0.2s ease;
