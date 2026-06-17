@@ -212,6 +212,47 @@ function adjustSegmentTime(manifestList, segId, field, value) {
   return manifest;
 }
 
+function TimeInput({ value, onChange, ...rest }) {
+  const [localValue, setLocalValue] = useState(value);
+  const [prevValue, setPrevValue] = useState(value);
+
+  if (value !== prevValue) {
+    setPrevValue(value);
+    setLocalValue(value);
+  }
+
+  const handleChange = (e) => {
+    setLocalValue(e.target.value);
+  };
+
+  const handleBlur = () => {
+    if (localValue !== value) {
+      onChange(localValue);
+    }
+  };
+
+  const handleKeyDown = (e) => {
+    if (e.key === 'Enter') {
+      if (localValue !== value) {
+        onChange(localValue);
+      }
+      e.target.blur();
+    }
+  };
+
+  return (
+    <input
+      type="number"
+      step="0.1"
+      value={localValue}
+      onChange={handleChange}
+      onBlur={handleBlur}
+      onKeyDown={handleKeyDown}
+      {...rest}
+    />
+  );
+}
+
 function EditorPage() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -1041,11 +1082,9 @@ function EditorPage() {
                 </div>
 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                  <input 
-                    type="number" 
-                    step="0.1" 
+                  <TimeInput 
                     value={segment.startTime} 
-                    onChange={(e) => handleTimeChange(segment.id, 'startTime', e.target.value)} 
+                    onChange={(val) => handleTimeChange(segment.id, 'startTime', val)} 
                   />
                   <button 
                     className="btn btn-secondary"
@@ -1058,11 +1097,9 @@ function EditorPage() {
                 </div>
 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                  <input 
-                    type="number" 
-                    step="0.1" 
+                  <TimeInput 
                     value={segment.endTime} 
-                    onChange={(e) => handleTimeChange(segment.id, 'endTime', e.target.value)} 
+                    onChange={(val) => handleTimeChange(segment.id, 'endTime', val)} 
                   />
                   <button 
                     className="btn btn-secondary"
