@@ -19,6 +19,14 @@ function App() {
             <span className="navbar-title">Lyric Video Generator</span>
           </Link>
           <div className="navbar-links">
+            <a 
+              href="https://github.com/davidstanke/lyric-video-generator/issues/new" 
+              target="_blank" 
+              rel="noopener noreferrer" 
+              className="navbar-bug-link"
+            >
+              Report a Bug
+            </a>
             <Link to="/new" className="navbar-link-btn">
               Create New
             </Link>

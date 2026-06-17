@@ -373,6 +373,19 @@ audio::-webkit-media-controls-mute-button {
   gap: 1rem;
 }
 
+.navbar-bug-link {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  font-weight: 500;
+  text-decoration: none;
+  transition: color 0.25s ease, transform 0.2s ease;
+}
+
+.navbar-bug-link:hover {
+  color: var(--accent-light);
+  transform: translateY(-0.5px);
+}
+
 .navbar-link-btn {
   background: rgba(139, 92, 246, 0.1);
   border: 1px solid rgba(139, 92, 246, 0.3);
