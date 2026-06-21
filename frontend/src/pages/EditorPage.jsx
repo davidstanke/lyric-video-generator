@@ -1193,7 +1193,6 @@ function EditorPage() {
               </div>
             );
           })}
-        </div>
 
         {/* Advanced Editing collapsible panel */}
         <div className="advanced-editing-panel" style={{
@@ -1425,6 +1424,7 @@ function EditorPage() {
               </div>
             </div>
           )}
+        </div>
         </div>
       ) : (
         <div className="raw-srt-container animate-fade-in">
