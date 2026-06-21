@@ -311,6 +311,11 @@ function EditorPage() {
   // Bulk timing adjustment state
   const [bulkOffset, setBulkOffset] = useState('');
 
+  // Advanced editing states
+  const [musicStartTrim, setMusicStartTrim] = useState(0.0);
+  const [musicEndTrim, setMusicEndTrim] = useState(0.0);
+  const [isAdvancedEditingOpen, setIsAdvancedEditingOpen] = useState(false);
+
   // Replace audio states
   const [isReplaceAudioModalOpen, setIsReplaceAudioModalOpen] = useState(false);
   const [selectedAudioFile, setSelectedAudioFile] = useState(null);
@@ -427,6 +432,8 @@ function EditorPage() {
         setManifest(response.data.manifest || []);
         setEditedTitle(response.data.name || '');
         setBackgroundColor(response.data.background_color || '#0f111a');
+        setMusicStartTrim(response.data.music_start_trim !== undefined ? response.data.music_start_trim : 0.0);
+        setMusicEndTrim(response.data.music_end_trim !== undefined ? response.data.music_end_trim : 0.0);
       } catch (err) {
         console.error(err);
         setError('Failed to load project details. Make sure the backend is running.');
@@ -576,7 +583,11 @@ function EditorPage() {
         activeManifest = resolveManifestOverlaps(manifest);
         setManifest(activeManifest);
       }
-      await axios.put(`/api/projects/${id}/manifest`, { manifest: activeManifest });
+      await axios.put(`/api/projects/${id}/manifest`, { 
+        manifest: activeManifest,
+        music_start_trim: musicStartTrim,
+        music_end_trim: musicEndTrim
+      });
       showToast('Manifest saved successfully!', 'success');
     } catch (err) {
       console.error(err);
@@ -609,7 +620,11 @@ function EditorPage() {
       }
       
       // First auto-save the manifest to ensure the video has the latest edits
-      await axios.put(`/api/projects/${id}/manifest`, { manifest: activeManifest });
+      await axios.put(`/api/projects/${id}/manifest`, { 
+        manifest: activeManifest,
+        music_start_trim: musicStartTrim,
+        music_end_trim: musicEndTrim
+      });
       
       await axios.post(`/api/projects/${id}/render`);
       
@@ -980,103 +995,6 @@ function EditorPage() {
         </div>
       </div>
 
-      {/* Bulk Operations Panel */}
-      {editMode === 'table' && (
-        <div className="bulk-operations-panel animate-fade-in" style={{
-          background: 'rgba(255, 255, 255, 0.03)',
-          border: '1px solid var(--glass-border)',
-          borderRadius: '12px',
-          padding: '1.25rem 1.5rem',
-          marginBottom: '1.5rem',
-          boxShadow: 'inset 0 1px 1px rgba(255, 255, 255, 0.05)'
-        }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
-            <div style={{ flex: '1 1 300px' }}>
-              <h4 style={{ margin: '0 0 0.25rem 0', display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '1rem' }}>
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: 'var(--accent-light)' }}>
-                  <circle cx="12" cy="12" r="10"></circle>
-                  <polyline points="12 6 12 12 16 14"></polyline>
-                </svg>
-                Bulk Timing Adjustments
-              </h4>
-              <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                Shift start and end times of all segments by a constant offset (seconds). Positive shifts move forward; negative shifts move backward.
-              </p>
-            </div>
-
-            <div style={{ display: 'flex', alignItems: 'center', gap: '1.25rem', flexWrap: 'wrap' }}>
-              {/* Presets Grid */}
-              <div style={{ display: 'flex', gap: '0.35rem' }}>
-                {[-1.0, -0.5, -0.1, 0.1, 0.5, 1.0].map((preset) => (
-                  <button
-                    key={preset}
-                    onClick={() => handleBulkTimingAdjust(preset)}
-                    className="btn btn-secondary"
-                    style={{
-                      padding: '0.35rem 0.6rem',
-                      fontSize: '0.75rem',
-                      borderRadius: '6px',
-                      background: 'rgba(255,255,255,0.02)',
-                      border: '1px solid var(--glass-border)',
-                      cursor: 'pointer',
-                      fontWeight: '600',
-                      transition: 'all 0.2s',
-                      boxShadow: 'none'
-                    }}
-                    onMouseOver={(e) => {
-                      e.currentTarget.style.background = 'var(--accent-light)';
-                      e.currentTarget.style.color = '#fff';
-                      e.currentTarget.style.borderColor = 'var(--accent-light)';
-                    }}
-                    onMouseOut={(e) => {
-                      e.currentTarget.style.background = 'rgba(255,255,255,0.02)';
-                      e.currentTarget.style.color = 'var(--text-main)';
-                      e.currentTarget.style.borderColor = 'var(--glass-border)';
-                    }}
-                    title={`Shift all segments by ${preset > 0 ? '+' : ''}${preset}s`}
-                  >
-                    {preset > 0 ? `+${preset}` : preset}s
-                  </button>
-                ))}
-              </div>
-
-              {/* Custom Input controls */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <input
-                  type="number"
-                  step="0.1"
-                  placeholder="e.g. -0.5"
-                  value={bulkOffset}
-                  onChange={(e) => setBulkOffset(e.target.value)}
-                  style={{
-                    width: '90px',
-                    padding: '0.4rem 0.6rem',
-                    fontSize: '0.85rem',
-                    background: 'rgba(0, 0, 0, 0.3)',
-                    border: '1px solid var(--glass-border)',
-                    borderRadius: '6px',
-                    color: 'var(--text-main)',
-                    textAlign: 'center',
-                    boxSizing: 'border-box'
-                  }}
-                />
-                <button
-                  onClick={() => handleBulkTimingAdjust(bulkOffset, true)}
-                  className="btn"
-                  style={{
-                    padding: '0.4rem 0.8rem',
-                    fontSize: '0.85rem',
-                    borderRadius: '6px',
-                    fontWeight: '600'
-                  }}
-                >
-                  Apply
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
 
       {isManual && (
         <div style={{ background: 'rgba(234, 179, 8, 0.1)', border: '1px solid rgba(234, 179, 8, 0.2)', color: '#f59e0b', padding: '0.75rem 1rem', borderRadius: '8px', marginBottom: '1.5rem', fontSize: '0.85rem' }}>
@@ -1275,6 +1193,238 @@ function EditorPage() {
               </div>
             );
           })}
+        </div>
+
+        {/* Advanced Editing collapsible panel */}
+        <div className="advanced-editing-panel" style={{
+          background: 'rgba(255, 255, 255, 0.03)',
+          border: '1px solid var(--glass-border)',
+          borderRadius: '12px',
+          marginTop: '1.5rem',
+          overflow: 'hidden',
+          boxShadow: 'inset 0 1px 1px rgba(255, 255, 255, 0.05)',
+          transition: 'all 0.3s ease'
+        }}>
+          {/* Header / Trigger */}
+          <div 
+            onClick={() => setIsAdvancedEditingOpen(!isAdvancedEditingOpen)}
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              padding: '1rem 1.5rem',
+              cursor: 'pointer',
+              background: 'rgba(255,255,255,0.02)',
+              userSelect: 'none',
+              transition: 'background 0.2s'
+            }}
+            onMouseOver={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.06)'}
+            onMouseOut={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.02)'}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent-light)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="3"></circle>
+                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+              </svg>
+              <span style={{ fontSize: '1rem', fontWeight: 'bold', color: 'var(--text-main)' }}>
+                Advanced Editing
+              </span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                {isAdvancedEditingOpen ? 'Hide' : 'Show'}
+              </span>
+              <svg 
+                width="16" 
+                height="16" 
+                viewBox="0 0 24 24" 
+                fill="none" 
+                stroke="currentColor" 
+                strokeWidth="2.5" 
+                strokeLinecap="round" 
+                strokeLinejoin="round"
+                style={{
+                  transform: isAdvancedEditingOpen ? 'rotate(180deg)' : 'rotate(0deg)',
+                  transition: 'transform 0.2s',
+                  color: 'var(--text-muted)'
+                }}
+              >
+                <polyline points="6 9 12 15 18 9"></polyline>
+              </svg>
+            </div>
+          </div>
+
+          {/* Collapsible Content */}
+          {isAdvancedEditingOpen && (
+            <div style={{
+              padding: '1.5rem',
+              borderTop: '1px solid var(--glass-border)',
+              background: 'rgba(0,0,0,0.1)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '1.5rem'
+            }}>
+              {/* Section 1: Music Trim controls */}
+              <div style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'start',
+                flexWrap: 'wrap',
+                gap: '1.5rem',
+                paddingBottom: '1.5rem',
+                borderBottom: '1px solid rgba(255,255,255,0.05)'
+              }}>
+                <div style={{ flex: '1 1 300px' }}>
+                  <h5 style={{ margin: '0 0 0.35rem 0', display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.95rem', color: 'var(--text-main)' }}>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: 'var(--accent-light)' }}>
+                      <path d="M12 1a5 5 0 0 0-5 5v7.26a3.5 3.5 0 1 0 3 3.42V10h3a1 1 0 0 0 0-2H10V6a3 3 0 0 1 6 0v2.73a4 4 0 1 0 2 0V6a5 5 0 0 0-5-5z"></path>
+                    </svg>
+                    Music Track Trimming
+                  </h5>
+                  <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--text-muted)', lineHeight: '1.4' }}>
+                    Trim silence or unwanted audio from the start/end of the reference file. Subtitle timings above remain relative to the original track; times are shifted only during video rendering.
+                  </p>
+                </div>
+
+                <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                    <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Beginning Trim (seconds)</label>
+                    <input 
+                      type="number"
+                      step="0.05"
+                      min="0"
+                      placeholder="e.g. 1.2"
+                      value={musicStartTrim}
+                      onChange={(e) => setMusicStartTrim(Math.max(0, parseFloat(e.target.value) || 0))}
+                      style={{
+                        width: '140px',
+                        padding: '0.45rem 0.6rem',
+                        fontSize: '0.85rem',
+                        background: 'rgba(0, 0, 0, 0.3)',
+                        border: '1px solid var(--glass-border)',
+                        borderRadius: '6px',
+                        color: 'var(--text-main)'
+                      }}
+                    />
+                  </div>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                    <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>End Trim (seconds)</label>
+                    <input 
+                      type="number"
+                      step="0.05"
+                      min="0"
+                      placeholder="e.g. 0.8"
+                      value={musicEndTrim}
+                      onChange={(e) => setMusicEndTrim(Math.max(0, parseFloat(e.target.value) || 0))}
+                      style={{
+                        width: '140px',
+                        padding: '0.45rem 0.6rem',
+                        fontSize: '0.85rem',
+                        background: 'rgba(0, 0, 0, 0.3)',
+                        border: '1px solid var(--glass-border)',
+                        borderRadius: '6px',
+                        color: 'var(--text-main)'
+                      }}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Section 2: Bulk Timing Adjustments */}
+              <div style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'start',
+                flexWrap: 'wrap',
+                gap: '1.5rem'
+              }}>
+                <div style={{ flex: '1 1 300px' }}>
+                  <h5 style={{ margin: '0 0 0.35rem 0', display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.95rem', color: 'var(--text-main)' }}>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: 'var(--accent-light)' }}>
+                      <circle cx="12" cy="12" r="10"></circle>
+                      <polyline points="12 6 12 12 16 14"></polyline>
+                    </svg>
+                    Bulk Timing Adjustments
+                  </h5>
+                  <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--text-muted)', lineHeight: '1.4' }}>
+                    Shift start and end times of all segments by a constant offset (seconds). Positive shifts move forward; negative shifts move backward.
+                  </p>
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
+                  {/* Presets Grid */}
+                  <div style={{ display: 'flex', gap: '0.35rem' }}>
+                    {[-1.0, -0.5, -0.1, 0.1, 0.5, 1.0].map((preset) => (
+                      <button
+                        key={preset}
+                        onClick={() => handleBulkTimingAdjust(preset)}
+                        className="btn btn-secondary"
+                        style={{
+                          padding: '0.35rem 0.6rem',
+                          fontSize: '0.75rem',
+                          borderRadius: '6px',
+                          background: 'rgba(255,255,255,0.02)',
+                          border: '1px solid var(--glass-border)',
+                          cursor: 'pointer',
+                          fontWeight: '600',
+                          transition: 'all 0.2s',
+                          boxShadow: 'none'
+                        }}
+                        onMouseOver={(e) => {
+                          e.currentTarget.style.background = 'var(--accent-light)';
+                          e.currentTarget.style.color = '#fff';
+                          e.currentTarget.style.borderColor = 'var(--accent-light)';
+                        }}
+                        onMouseOut={(e) => {
+                          e.currentTarget.style.background = 'rgba(255,255,255,0.02)';
+                          e.currentTarget.style.color = 'var(--text-main)';
+                          e.currentTarget.style.borderColor = 'var(--glass-border)';
+                        }}
+                        title={`Shift all segments by ${preset > 0 ? '+' : ''}${preset}s`}
+                      >
+                        {preset > 0 ? `+${preset}` : preset}s
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Custom Input controls */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <input
+                      type="number"
+                      step="0.1"
+                      placeholder="e.g. -0.5"
+                      value={bulkOffset}
+                      onChange={(e) => setBulkOffset(e.target.value)}
+                      style={{
+                        width: '90px',
+                        padding: '0.4rem 0.6rem',
+                        fontSize: '0.85rem',
+                        background: 'rgba(0, 0, 0, 0.3)',
+                        border: '1px solid var(--glass-border)',
+                        borderRadius: '6px',
+                        color: 'var(--text-main)',
+                        textAlign: 'center',
+                        boxSizing: 'border-box'
+                      }}
+                    />
+                    <button
+                      onClick={() => handleBulkTimingAdjust(bulkOffset, true)}
+                      className="btn"
+                      style={{
+                        padding: '0.4rem 0.8rem',
+                        fontSize: '0.85rem',
+                        borderRadius: '6px',
+                        fontWeight: '600'
+                      }}
+                    >
+                      Apply
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       ) : (
         <div className="raw-srt-container animate-fade-in">

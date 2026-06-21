@@ -9,7 +9,7 @@ const path = require('path');
 const { generateAss } = require('./utils/assGenerator');
 const { execSync } = require('child_process');
 const { dbQuery, storageDir } = require('./database');
-const { uploadFile, deleteFile } = require('./storage');
+const { uploadFile, deleteFile, duplicateFile } = require('./storage');
 const { guessTitle } = require('./utils/metadata');
 const { classifyLyrics } = require('./utils/themeClassifier');
 const { alignLyrics, resolveManifestOverlaps } = require('./utils/lyricAligner');
@@ -41,6 +41,74 @@ function getAudioDuration(filePath) {
     console.error('Error getting duration:', e);
     return 55.0; // fallback
   }
+}
+
+// Helper to analyze audio and detect optimal silence trims
+function analyzeAudioTrims(filePath, totalDuration) {
+  let firstSoundTime = 0.0;
+  let lastSoundTime = totalDuration;
+
+  try {
+    // Run ffmpeg silencedetect with -50dB threshold (perfect balance for music files)
+    const output = execSync(
+      `ffmpeg -i "${filePath}" -af silencedetect=noise=-50dB:d=0.1 -f null - 2>&1`
+    ).toString();
+
+    const lines = output.split('\n');
+    let silenceBlocks = [];
+    let currentBlock = null;
+
+    for (const line of lines) {
+      if (line.includes('silence_start:')) {
+        const startMatch = line.match(/silence_start:\s*([\d.]+)/);
+        if (startMatch) {
+          const startTime = parseFloat(startMatch[1]);
+          currentBlock = { start: startTime, end: null };
+          silenceBlocks.push(currentBlock);
+        }
+      } else if (line.includes('silence_end:')) {
+        const endMatch = line.match(/silence_end:\s*([\d.]+)/);
+        if (endMatch) {
+          const endTime = parseFloat(endMatch[1]);
+          if (currentBlock && currentBlock.end === null) {
+            currentBlock.end = endTime;
+          } else {
+            // Silence block that started at the very beginning of the file
+            silenceBlocks.push({ start: 0.0, end: endTime });
+          }
+        }
+      }
+    }
+
+    // Finding firstSoundTime: if there's a silence starting near 0, the first sound starts at its end.
+    const startSilence = silenceBlocks.find(b => b.start <= 0.05 && b.end !== null);
+    if (startSilence) {
+      firstSoundTime = startSilence.end;
+    } else {
+      firstSoundTime = 0.0;
+    }
+
+    // Finding lastSoundTime: if there's silence near the end of the file, the sound ended when that silence started.
+    // Silence at the end might have silence_start but no silence_end log if it runs to the very end of file.
+    const endSilence = silenceBlocks.find(b => b.start < totalDuration && (b.end === null || b.end >= totalDuration - 0.5));
+    if (endSilence) {
+      lastSoundTime = endSilence.start;
+    } else {
+      lastSoundTime = totalDuration;
+    }
+  } catch (err) {
+    console.error('Error analyzing audio trims with ffmpeg:', err);
+  }
+
+  // Set the default beginning trim to have exactly 0.2s of silence before first sound
+  const music_start_trim = Math.max(0, firstSoundTime - 0.2);
+  // Set the default end trim to have exactly 0.2s of silence after the last sound
+  const music_end_trim = Math.max(0, totalDuration - lastSoundTime - 0.2);
+
+  return {
+    music_start_trim: parseFloat(music_start_trim.toFixed(2)),
+    music_end_trim: parseFloat(music_end_trim.toFixed(2))
+  };
 }
 
 // Automatically set GOOGLE_APPLICATION_CREDENTIALS if service-account-key.json is present in the parent folder
@@ -146,12 +214,15 @@ app.post('/api/projects/probe', upload.single('audio'), async (req, res) => {
     }
 
     const { guessedTitle, duration } = guessTitle(req.file.path, req.file.originalname);
+    const trims = analyzeAudioTrims(req.file.path, duration);
 
     res.json({
       tempPath: req.file.path,
       originalName: req.file.originalname,
       guessedTitle,
-      duration
+      duration,
+      music_start_trim: trims.music_start_trim,
+      music_end_trim: trims.music_end_trim
     });
   } catch (error) {
     console.error('Error probing metadata:', error);
@@ -386,6 +457,9 @@ app.post('/api/projects', async (req, res) => {
       console.error('Failed to classify lyrics:', themeError);
     }
 
+    // Calculate default music trims using our helper
+    const trims = analyzeAudioTrims(filePath, totalDuration);
+
     // Upload final MP3 file to storage and get target path/URL
     const audioFilename = path.basename(filePath);
     const finalAudioPath = await uploadFile(filePath, 'audio', audioFilename);
@@ -395,7 +469,9 @@ app.post('/api/projects', async (req, res) => {
       name: projectName,
       audio_path: finalAudioPath,
       manifest: manifest,
-      background_color: suggestedColor
+      background_color: suggestedColor,
+      music_start_trim: trims.music_start_trim,
+      music_end_trim: trims.music_end_trim
     });
 
     res.json({
@@ -404,7 +480,9 @@ app.post('/api/projects', async (req, res) => {
       audioPath: finalAudioPath,
       manifest: manifest,
       transcriptionStatus: transcriptionStatus,
-      backgroundColor: suggestedColor
+      backgroundColor: suggestedColor,
+      music_start_trim: trims.music_start_trim,
+      music_end_trim: trims.music_end_trim
     });
 
   } catch (error) {
@@ -426,10 +504,10 @@ app.post('/api/projects', async (req, res) => {
   }
 });
 
-// 4. PUT /api/projects/:id/manifest - Save updated manifest
+// 4. PUT /api/projects/:id/manifest - Save updated manifest and settings
 app.put('/api/projects/:id/manifest', async (req, res) => {
   try {
-    const { manifest } = req.body;
+    const { manifest, music_start_trim, music_end_trim } = req.body;
     if (!manifest) {
       return res.status(400).json({ error: 'Manifest is required' });
     }
@@ -444,10 +522,14 @@ app.put('/api/projects/:id/manifest', async (req, res) => {
 
     await dbQuery.updateProjectManifest(req.params.id, resolvedManifest);
 
+    if (music_start_trim !== undefined && music_end_trim !== undefined) {
+      await dbQuery.updateProjectTrims(req.params.id, parseFloat(music_start_trim), parseFloat(music_end_trim));
+    }
+
     res.json({ success: true });
   } catch (error) {
-    console.error('Error updating manifest:', error);
-    res.status(500).json({ error: 'Failed to update manifest' });
+    console.error('Error updating manifest and trims:', error);
+    res.status(500).json({ error: 'Failed to update project data' });
   }
 });
 
@@ -689,7 +771,10 @@ app.post('/api/projects/:id/render', async (req, res) => {
       }
     }
 
-    const assContent = generateAss(manifest, project.name);
+    const music_start_trim = project.music_start_trim || 0.0;
+    const music_end_trim = project.music_end_trim || 0.0;
+
+    const assContent = generateAss(manifest, project.name, music_start_trim);
     const assFilename = `subtitles_${Date.now()}.ass`;
     const assPath = path.join(storageDir, 'subtitles', assFilename);
     fs.writeFileSync(assPath, assContent);
@@ -701,7 +786,7 @@ app.post('/api/projects/:id/render', async (req, res) => {
     const outputFilename = `${cleanTitle}_${Date.now()}.mp4`;
     const outputPath = path.join(storageDir, 'video', outputFilename);
 
-    console.log('Starting FFmpeg rendering...');
+    console.log(`Starting FFmpeg rendering... (Trim start: ${music_start_trim}s, Trim end: ${music_end_trim}s)`);
 
     const absoluteAssPath = path.resolve(assPath);
     const absoluteFontsDir = path.resolve(__dirname, '..', 'resources', 'fonts');
@@ -726,10 +811,27 @@ app.post('/api/projects/:id/render', async (req, res) => {
     const cleanBgColor = rawBgColor.startsWith('#') ? rawBgColor.replace('#', '0x') : rawBgColor;
     console.log(`Rendering video with background color: ${rawBgColor} (${cleanBgColor})`);
 
+    const totalDuration = getAudioDuration(localAudioPath);
+    const renderDuration = totalDuration - music_start_trim - music_end_trim;
+
     command
       .input(`color=c=${cleanBgColor}:s=1280x720`)
-      .inputFormat('lavfi')
-      .input(localAudioPath)
+      .inputFormat('lavfi');
+
+    if (music_start_trim > 0 || music_end_trim > 0) {
+      const audioInputOptions = [];
+      if (music_start_trim > 0) {
+        audioInputOptions.push(`-ss ${music_start_trim}`);
+      }
+      if (renderDuration > 0) {
+        audioInputOptions.push(`-t ${renderDuration}`);
+      }
+      command.input(localAudioPath).inputOptions(audioInputOptions);
+    } else {
+      command.input(localAudioPath);
+    }
+
+    command
       .outputOptions(['-shortest'])
       .videoFilters(`subtitles='${escapedAssPath}':fontsdir='${escapedFontsDir}'`)
       .audioCodec('aac')
@@ -771,6 +873,75 @@ app.post('/api/projects/:id/render', async (req, res) => {
   } catch (error) {
     console.error('Error rendering video:', error);
     res.status(500).json({ error: 'Error rendering video', details: error.message });
+  }
+});
+
+// 5b. POST /api/projects/:id/duplicate - Duplicate project and assets
+app.post('/api/projects/:id/duplicate', async (req, res) => {
+  try {
+    const project = await dbQuery.getProjectById(req.params.id);
+    if (!project) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+
+    // 1. Duplicate audio file if it exists
+    let newAudioPath = project.audio_path;
+    if (project.audio_path) {
+      const ext = path.extname(project.audio_path) || '.mp3';
+      const cleanTitle = (project.name + '_copy').toLowerCase()
+        .replace(/[^a-z0-9]+/g, '_')
+        .replace(/^_+|_+$/g, '');
+      const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+      const newAudioFilename = `${cleanTitle}-${uniqueSuffix}${ext}`;
+      
+      try {
+        newAudioPath = await duplicateFile(project.audio_path, 'audio', newAudioFilename);
+      } catch (dupErr) {
+        console.error('Error duplicating audio file:', dupErr);
+        return res.status(500).json({ error: 'Failed to duplicate audio file assets' });
+      }
+    }
+
+    // 2. Duplicate video file if it exists
+    let newVideoPath = null;
+    if (project.video_path) {
+      const ext = path.extname(project.video_path) || '.mp4';
+      const cleanTitle = (project.name + '_copy').toLowerCase()
+        .replace(/[^a-z0-9]+/g, '_')
+        .replace(/^_+|_+$/g, '');
+      const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+      const newVideoFilename = `${cleanTitle}-${uniqueSuffix}${ext}`;
+      
+      try {
+        newVideoPath = await duplicateFile(project.video_path, 'video', newVideoFilename);
+      } catch (dupErr) {
+        console.warn('Error duplicating video file (non-blocking):', dupErr);
+      }
+    }
+
+    // 3. Create the new project in the database
+    const manifestObj = typeof project.manifest === 'string' ? JSON.parse(project.manifest) : project.manifest;
+    const insertResult = await dbQuery.createProject({
+      name: `${project.name} Copy`,
+      audio_path: newAudioPath,
+      manifest: manifestObj,
+      background_color: project.background_color || '#0f111a',
+      music_start_trim: project.music_start_trim !== undefined ? project.music_start_trim : 0.0,
+      music_end_trim: project.music_end_trim !== undefined ? project.music_end_trim : 0.0
+    });
+
+    if (newVideoPath) {
+      await dbQuery.updateProjectVideoPath(insertResult.id, newVideoPath);
+    }
+
+    res.json({
+      success: true,
+      id: insertResult.id,
+      name: `${project.name} Copy`
+    });
+  } catch (error) {
+    console.error('Error duplicating project:', error);
+    res.status(500).json({ error: 'Failed to duplicate project' });
   }
 });
 

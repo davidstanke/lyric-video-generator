@@ -65,7 +65,7 @@ function initializeDatabase() {
       } else {
         console.log('Database tables initialized successfully.');
         
-        // Run schema migration to add background_color column if missing
+        // Run schema migration to add background_color, music_start_trim, and music_end_trim columns if missing
         db.all("PRAGMA table_info(projects)", (pragmaErr, columns) => {
           if (pragmaErr) {
             console.error('Error reading projects table schema:', pragmaErr.message);
@@ -79,6 +79,26 @@ function initializeDatabase() {
                   console.error('Error adding background_color column:', alterErr.message);
                 } else {
                   console.log('Successfully added background_color column with default value.');
+                }
+              });
+            }
+            const hasStartTrim = columns.some(col => col.name === 'music_start_trim');
+            if (!hasStartTrim) {
+              db.run("ALTER TABLE projects ADD COLUMN music_start_trim REAL DEFAULT 0.0", (alterErr) => {
+                if (alterErr) {
+                  console.error('Error adding music_start_trim column:', alterErr.message);
+                } else {
+                  console.log('Successfully added music_start_trim column with default value.');
+                }
+              });
+            }
+            const hasEndTrim = columns.some(col => col.name === 'music_end_trim');
+            if (!hasEndTrim) {
+              db.run("ALTER TABLE projects ADD COLUMN music_end_trim REAL DEFAULT 0.0", (alterErr) => {
+                if (alterErr) {
+                  console.error('Error adding music_end_trim column:', alterErr.message);
+                } else {
+                  console.log('Successfully added music_end_trim column with default value.');
                 }
               });
             }
@@ -100,7 +120,9 @@ function mapFirestoreDoc(doc) {
     video_path: data.video_path || null,
     created_at: data.created_at ? data.created_at.toDate().toISOString() : null,
     updated_at: data.updated_at ? data.updated_at.toDate().toISOString() : null,
-    background_color: data.background_color || '#0f111a'
+    background_color: data.background_color || '#0f111a',
+    music_start_trim: data.music_start_trim !== undefined ? data.music_start_trim : 0.0,
+    music_end_trim: data.music_end_trim !== undefined ? data.music_end_trim : 0.0
   };
 }
 
@@ -156,7 +178,7 @@ const dbQuery = {
       return projects;
     } else {
       return new Promise((resolve, reject) => {
-        db.all('SELECT id, name, audio_path, video_path, created_at, updated_at, background_color FROM projects ORDER BY created_at DESC', [], (err, rows) => {
+        db.all('SELECT id, name, audio_path, video_path, created_at, updated_at, background_color, music_start_trim, music_end_trim FROM projects ORDER BY created_at DESC', [], (err, rows) => {
           if (err) reject(err);
           else resolve(rows);
         });
@@ -180,7 +202,7 @@ const dbQuery = {
     }
   },
 
-  async createProject({ name, audio_path, manifest, background_color = '#0f111a' }) {
+  async createProject({ name, audio_path, manifest, background_color = '#0f111a', music_start_trim = 0.0, music_end_trim = 0.0 }) {
     if (isProd) {
       const docRef = firestoreClient.collection('projects').doc();
       const projectData = {
@@ -190,7 +212,9 @@ const dbQuery = {
         video_path: null,
         created_at: new Date(),
         updated_at: new Date(),
-        background_color
+        background_color,
+        music_start_trim,
+        music_end_trim
       };
       await docRef.set(projectData);
       return { id: docRef.id };
@@ -198,8 +222,8 @@ const dbQuery = {
       const manifestStr = typeof manifest === 'string' ? manifest : JSON.stringify(manifest);
       return new Promise((resolve, reject) => {
         db.run(
-          'INSERT INTO projects (name, audio_path, manifest, background_color) VALUES (?, ?, ?, ?)',
-          [name, audio_path, manifestStr, background_color],
+          'INSERT INTO projects (name, audio_path, manifest, background_color, music_start_trim, music_end_trim) VALUES (?, ?, ?, ?, ?, ?)',
+          [name, audio_path, manifestStr, background_color, music_start_trim, music_end_trim],
           function (err) {
             if (err) reject(err);
             else resolve({ id: this.lastID });
@@ -311,6 +335,29 @@ const dbQuery = {
         db.run(
           'UPDATE projects SET video_path = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
           [videoPath, id],
+          (err) => {
+            if (err) reject(err);
+            else resolve({ success: true });
+          }
+        );
+      });
+    }
+  },
+
+  async updateProjectTrims(id, musicStartTrim, musicEndTrim) {
+    if (isProd) {
+      const docRef = firestoreClient.collection('projects').doc(id.toString());
+      await docRef.update({
+        music_start_trim: musicStartTrim,
+        music_end_trim: musicEndTrim,
+        updated_at: new Date()
+      });
+      return { success: true };
+    } else {
+      return new Promise((resolve, reject) => {
+        db.run(
+          'UPDATE projects SET music_start_trim = ?, music_end_trim = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+          [musicStartTrim, musicEndTrim, id],
           (err) => {
             if (err) reject(err);
             else resolve({ success: true });

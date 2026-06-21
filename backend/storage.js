@@ -118,8 +118,74 @@ async function deleteFile(filePath) {
   }
 }
 
+/**
+ * Duplicates/copies an existing file (GCS public URL in production, local path in dev)
+ * @param {string} filePath - Absolute path or GCS public URL of the source file
+ * @param {string} folder - Folder name ('audio' or 'video')
+ * @param {string} newFilename - Target filename for the copied file
+ * @returns {Promise<string>} File path/URL of the duplicated file
+ */
+async function duplicateFile(filePath, folder, newFilename) {
+  if (!filePath) return null;
+
+  if (isProd) {
+    // Expecting URL format: https://storage.googleapis.com/bucket-name/folder/filename.ext
+    const marker = `https://storage.googleapis.com/${bucketName}/`;
+    if (!filePath.startsWith(marker)) {
+      console.warn(`File path ${filePath} does not appear to be a GCS URL in bucket ${bucketName}. Cannot duplicate in production.`);
+      return filePath;
+    }
+
+    const relativeSourcePath = filePath.replace(marker, '');
+    const relativeDestPath = `${folder}/${newFilename}`;
+    console.log(`Duplicating GCS file from ${relativeSourcePath} to ${relativeDestPath}`);
+
+    try {
+      const bucket = storageClient.bucket(bucketName);
+      const srcFile = bucket.file(relativeSourcePath);
+      const destFile = bucket.file(relativeDestPath);
+
+      await srcFile.copy(destFile);
+
+      // Make the duplicated file public
+      try {
+        await destFile.makePublic();
+      } catch (aclErr) {
+        console.warn(`Could not set public ACL for duplicated file ${relativeDestPath}:`, aclErr.message);
+      }
+
+      const publicUrl = `https://storage.googleapis.com/${bucketName}/${relativeDestPath}`;
+      console.log(`GCS duplication completed successfully. Public URL: ${publicUrl}`);
+      return publicUrl;
+    } catch (error) {
+      console.error('Failed to duplicate file in GCS:', error);
+      throw error;
+    }
+  } else {
+    // Local mode duplication
+    if (!fs.existsSync(filePath)) {
+      console.warn(`Local file not found at path: ${filePath}. Cannot duplicate.`);
+      return filePath;
+    }
+
+    try {
+      const ext = path.extname(filePath);
+      const destDir = path.dirname(filePath);
+      const destPath = path.join(destDir, newFilename);
+      
+      fs.copyFileSync(filePath, destPath);
+      console.log(`Successfully duplicated local file from ${filePath} to ${destPath}`);
+      return destPath;
+    } catch (err) {
+      console.error(`Failed to duplicate local file ${filePath}:`, err.message);
+      throw err;
+    }
+  }
+}
+
 module.exports = {
   uploadFile,
   deleteFile,
+  duplicateFile,
   isProd
 };
