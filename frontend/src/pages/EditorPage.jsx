@@ -308,6 +308,9 @@ function EditorPage() {
   const [editedTitle, setEditedTitle] = useState('');
   const [isRenaming, setIsRenaming] = useState(false);
 
+  // Bulk timing adjustment state
+  const [bulkOffset, setBulkOffset] = useState('');
+
   // Replace audio states
   const [isReplaceAudioModalOpen, setIsReplaceAudioModalOpen] = useState(false);
   const [selectedAudioFile, setSelectedAudioFile] = useState(null);
@@ -455,6 +458,42 @@ function EditorPage() {
 
   const handleDeleteSegment = (segId) => {
     setManifest(manifest.filter(seg => seg.id !== segId));
+  };
+
+  const handleBulkTimingAdjust = (offset, clearInput = false) => {
+    const adjustVal = parseFloat(offset);
+    if (isNaN(adjustVal) || adjustVal === 0) {
+      showToast('Please enter a non-zero number to adjust timings.', 'error');
+      return;
+    }
+
+    const shiftedManifest = manifest.map(seg => {
+      let newStart = parseFloat((seg.startTime + adjustVal).toFixed(2));
+      let newEnd = parseFloat((seg.endTime + adjustVal).toFixed(2));
+
+      // Clamp to minimum 0.0s
+      if (newStart < 0) newStart = 0;
+      if (newEnd < 0) newEnd = 0;
+
+      // Enforce minimum 0.1s duration
+      if (parseFloat((newEnd - newStart).toFixed(2)) < 0.1) {
+        newEnd = parseFloat((newStart + 0.1).toFixed(2));
+      }
+
+      return {
+        ...seg,
+        startTime: newStart,
+        endTime: newEnd
+      };
+    });
+
+    // Resolve any newly introduced overlaps
+    const resolvedManifest = resolveManifestOverlaps(shiftedManifest);
+    setManifest(resolvedManifest);
+    if (clearInput) {
+      setBulkOffset('');
+    }
+    showToast(`Successfully adjusted all timings by ${adjustVal > 0 ? '+' : ''}${adjustVal}s!`, 'success');
   };
 
   const handleRenameTitle = async () => {
@@ -940,6 +979,104 @@ function EditorPage() {
           </div>
         </div>
       </div>
+
+      {/* Bulk Operations Panel */}
+      {editMode === 'table' && (
+        <div className="bulk-operations-panel animate-fade-in" style={{
+          background: 'rgba(255, 255, 255, 0.03)',
+          border: '1px solid var(--glass-border)',
+          borderRadius: '12px',
+          padding: '1.25rem 1.5rem',
+          marginBottom: '1.5rem',
+          boxShadow: 'inset 0 1px 1px rgba(255, 255, 255, 0.05)'
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
+            <div style={{ flex: '1 1 300px' }}>
+              <h4 style={{ margin: '0 0 0.25rem 0', display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '1rem' }}>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: 'var(--accent-light)' }}>
+                  <circle cx="12" cy="12" r="10"></circle>
+                  <polyline points="12 6 12 12 16 14"></polyline>
+                </svg>
+                Bulk Timing Adjustments
+              </h4>
+              <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                Shift start and end times of all segments by a constant offset (seconds). Positive shifts move forward; negative shifts move backward.
+              </p>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '1.25rem', flexWrap: 'wrap' }}>
+              {/* Presets Grid */}
+              <div style={{ display: 'flex', gap: '0.35rem' }}>
+                {[-1.0, -0.5, -0.1, 0.1, 0.5, 1.0].map((preset) => (
+                  <button
+                    key={preset}
+                    onClick={() => handleBulkTimingAdjust(preset)}
+                    className="btn btn-secondary"
+                    style={{
+                      padding: '0.35rem 0.6rem',
+                      fontSize: '0.75rem',
+                      borderRadius: '6px',
+                      background: 'rgba(255,255,255,0.02)',
+                      border: '1px solid var(--glass-border)',
+                      cursor: 'pointer',
+                      fontWeight: '600',
+                      transition: 'all 0.2s',
+                      boxShadow: 'none'
+                    }}
+                    onMouseOver={(e) => {
+                      e.currentTarget.style.background = 'var(--accent-light)';
+                      e.currentTarget.style.color = '#fff';
+                      e.currentTarget.style.borderColor = 'var(--accent-light)';
+                    }}
+                    onMouseOut={(e) => {
+                      e.currentTarget.style.background = 'rgba(255,255,255,0.02)';
+                      e.currentTarget.style.color = 'var(--text-main)';
+                      e.currentTarget.style.borderColor = 'var(--glass-border)';
+                    }}
+                    title={`Shift all segments by ${preset > 0 ? '+' : ''}${preset}s`}
+                  >
+                    {preset > 0 ? `+${preset}` : preset}s
+                  </button>
+                ))}
+              </div>
+
+              {/* Custom Input controls */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <input
+                  type="number"
+                  step="0.1"
+                  placeholder="e.g. -0.5"
+                  value={bulkOffset}
+                  onChange={(e) => setBulkOffset(e.target.value)}
+                  style={{
+                    width: '90px',
+                    padding: '0.4rem 0.6rem',
+                    fontSize: '0.85rem',
+                    background: 'rgba(0, 0, 0, 0.3)',
+                    border: '1px solid var(--glass-border)',
+                    borderRadius: '6px',
+                    color: 'var(--text-main)',
+                    textAlign: 'center',
+                    boxSizing: 'border-box'
+                  }}
+                />
+                <button
+                  onClick={() => handleBulkTimingAdjust(bulkOffset, true)}
+                  className="btn"
+                  style={{
+                    padding: '0.4rem 0.8rem',
+                    fontSize: '0.85rem',
+                    borderRadius: '6px',
+                    fontWeight: '600'
+                  }}
+                >
+                  Apply
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {isManual && (
         <div style={{ background: 'rgba(234, 179, 8, 0.1)', border: '1px solid rgba(234, 179, 8, 0.2)', color: '#f59e0b', padding: '0.75rem 1rem', borderRadius: '8px', marginBottom: '1.5rem', fontSize: '0.85rem' }}>
