@@ -73,16 +73,40 @@ function ProjectsPage() {
   };
 
   return (
-    <div className="glass-panel animate-fade-in" style={{ maxWidth: '900px', margin: '0 auto', width: '100%' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
-        <h2>My Lyric Video Projects</h2>
-        <Link to="/new" className="btn">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <div className="rack-panel rack-unit animate-fade-in" style={{ maxWidth: '960px', margin: '0 auto', width: '100%' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '1rem' }}>
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+            <span className="led-lamp cyan"></span>
+            <h2 style={{ margin: 0, fontSize: '1.6rem', letterSpacing: '0.02em', textTransform: 'uppercase' }}>STUDIO SESSION ARCHIVE</h2>
+          </div>
+          <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+            19" Rack Mounting Bay • Audio Track Projects & Rendered Masters
+          </p>
+        </div>
+        <Link to="/new" className="btn btn-record" style={{ padding: '0.6rem 1.25rem' }}>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
             <line x1="12" y1="5" x2="12" y2="19"></line>
             <line x1="5" y1="12" x2="19" y2="12"></line>
           </svg>
-          Create New Video
+          NEW SESSION
         </Link>
+      </div>
+
+      {/* Session Stats Bar */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1rem', marginBottom: '1.75rem' }}>
+        <div style={{ background: '#07090e', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px', padding: '0.85rem', textAlign: 'center' }}>
+          <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: '0.2rem' }}>TOTAL SESSIONS</span>
+          <span className="font-mono" style={{ fontSize: '1.4rem', color: 'var(--lcd-cyan-bright)', fontWeight: 'bold' }}>{projects.length}</span>
+        </div>
+        <div style={{ background: '#07090e', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px', padding: '0.85rem', textAlign: 'center' }}>
+          <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: '0.2rem' }}>MASTER EXPORTS</span>
+          <span className="font-mono" style={{ fontSize: '1.4rem', color: 'var(--vu-green)', fontWeight: 'bold' }}>{projects.filter(p => p.video_path).length}</span>
+        </div>
+        <div style={{ background: '#07090e', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px', padding: '0.85rem', textAlign: 'center' }}>
+          <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: '0.2rem' }}>ACTIVE DRAFTS</span>
+          <span className="font-mono" style={{ fontSize: '1.4rem', color: 'var(--lcd-amber)', fontWeight: 'bold' }}>{projects.filter(p => !p.video_path).length}</span>
+        </div>
       </div>
 
       {error && (
@@ -92,96 +116,101 @@ function ProjectsPage() {
       )}
 
       {isLoading ? (
-        <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }} className="animate-pulse">
-          Loading projects...
+        <div style={{ textAlign: 'center', padding: '3rem' }}>
+          <p className="lcd-display amber animate-pulse">READING RACK ARCHIVE MEMORY...</p>
         </div>
       ) : projects.length === 0 ? (
-        <div style={{ textAlign: 'center', padding: '4rem 2rem', color: 'var(--text-muted)' }}>
-          <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round" style={{ marginBottom: '1rem', opacity: 0.5 }}>
-            <polygon points="23 7 16 12 23 17 23 7"></polygon>
-            <rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect>
+        <div style={{ textAlign: 'center', padding: '4rem 2rem', background: '#07090e', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.08)' }}>
+          <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round" style={{ marginBottom: '1rem', opacity: 0.5 }}>
+            <circle cx="7" cy="12" r="5"></circle>
+            <circle cx="17" cy="12" r="5"></circle>
+            <path d="M7 17h10"></path>
           </svg>
-          <h3>No projects yet</h3>
-          <p style={{ marginTop: '0.5rem', marginBottom: '1.5rem' }}>Upload an audio file to generate your first synchronized lyric video!</p>
-          <Link to="/new" className="btn btn-secondary">Get Started</Link>
+          <h3 style={{ textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-main)' }}>RACK ARCHIVE EMPTY</h3>
+          <p style={{ marginTop: '0.5rem', marginBottom: '1.5rem', color: 'var(--text-muted)', fontSize: '0.9rem' }}>No recording sessions found in database. Ingest an audio track to start.</p>
+          <Link to="/new" className="btn btn-secondary">LOAD AUDIO TRACK</Link>
         </div>
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-          {projects.map((project) => (
-            <div 
-              key={project.id} 
-              className="project-row"
-              style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                background: 'rgba(0,0,0,0.2)',
-                padding: '1.25rem',
-                borderRadius: '12px',
-                border: '1px solid var(--glass-border)',
-                transition: 'all 0.2s',
-                cursor: 'pointer'
-              }}
-              onClick={() => navigate(`/projects/${project.id}/edit`)}
-              onMouseOver={(e) => e.currentTarget.style.borderColor = 'var(--accent-light)'}
-              onMouseOut={(e) => e.currentTarget.style.borderColor = 'var(--glass-border)'}
-            >
-              <div>
-                <h3 style={{ color: 'var(--text-main)', marginBottom: '0.25rem' }}>{project.name}</h3>
-                <p style={{ fontSize: '0.85rem' }}>
-                  Created: {new Date(project.created_at).toLocaleDateString()} at {new Date(project.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
-                </p>
-              </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
+          {projects.map((project, idx) => {
+            const rackSlot = String(idx + 1).padStart(2, '0');
+            const hasVideo = Boolean(project.video_path);
+            return (
+              <div 
+                key={project.id} 
+                className="channel-strip"
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  background: 'linear-gradient(180deg, #131722 0%, #0d0f17 100%)',
+                  padding: '1.1rem 1.25rem',
+                  borderRadius: '8px',
+                  border: '1px solid rgba(255,255,255,0.08)',
+                  borderLeft: `4px solid ${hasVideo ? 'var(--vu-green)' : 'var(--lcd-amber)'}`,
+                  transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+                  cursor: 'pointer'
+                }}
+                onClick={() => navigate(`/projects/${project.id}/edit`)}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                  <span className="channel-badge" style={{ fontSize: '0.8rem' }}>BAY {rackSlot}</span>
+                  <div>
+                    <h3 style={{ color: 'var(--text-main)', marginBottom: '0.2rem', fontSize: '1.1rem' }}>{project.name}</h3>
+                    <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: 0, fontFamily: 'var(--font-lcd)' }}>
+                      TIMESTAMP: {new Date(project.created_at).toLocaleDateString()} • {new Date(project.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                    </p>
+                  </div>
+                </div>
 
-              <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
-                {project.video_path ? (
+                <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+                  {hasVideo ? (
+                    <button 
+                      className="btn btn-secondary"
+                      style={{ padding: '0.45rem 0.85rem', fontSize: '0.8rem', color: 'var(--vu-green)', borderColor: 'rgba(0, 255, 136, 0.4)', background: 'rgba(0, 255, 136, 0.08)' }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        navigate(`/projects/${project.id}/result`);
+                      }}
+                    >
+                      ▶ MASTER VIDEO
+                    </button>
+                  ) : (
+                    <span className="lcd-display amber" style={{ fontSize: '0.75rem' }}>
+                      DRAFT IN EDIT
+                    </span>
+                  )}
+
                   <button 
-                    className="btn btn-secondary"
-                    style={{ padding: '0.5rem 1rem', fontSize: '0.9rem', color: '#10b981', borderColor: '#10b981' }}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      navigate(`/projects/${project.id}/result`);
-                    }}
+                    className="btn" 
+                    style={{ padding: '0.45rem 0.85rem', fontSize: '0.8rem' }}
+                    onClick={() => navigate(`/projects/${project.id}/edit`)}
                   >
-                    Play Video
+                    MIX / EDIT
                   </button>
-                ) : (
-                  <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)', background: 'rgba(255,255,255,0.05)', padding: '0.25rem 0.75rem', borderRadius: '20px', border: '1px solid var(--glass-border)' }}>
-                    Draft
-                  </span>
-                )}
 
-                <button 
-                  className="btn" 
-                  style={{ padding: '0.5rem 1rem', fontSize: '0.9rem' }}
-                  onClick={() => navigate(`/projects/${project.id}/edit`)}
-                >
-                  Edit
-                </button>
-
-                <button 
-                  style={{
-                    background: 'none',
-                    border: 'none',
-                    color: '#ef4444',
-                    cursor: 'pointer',
-                    padding: '0.5rem',
-                    display: 'flex',
-                    alignItems: 'center'
-                  }}
-                  onClick={(e) => handleDelete(project.id, e)}
-                  title="Delete Project"
-                >
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <polyline points="3 6 5 6 21 6"></polyline>
-                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-                    <line x1="10" y1="11" x2="10" y2="17"></line>
-                    <line x1="14" y1="11" x2="14" y2="17"></line>
-                  </svg>
-                </button>
+                  <button 
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      color: '#ef4444',
+                      cursor: 'pointer',
+                      padding: '0.5rem',
+                      display: 'flex',
+                      alignItems: 'center'
+                    }}
+                    onClick={(e) => handleDelete(project.id, e)}
+                    title="Delete Session"
+                  >
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="3 6 5 6 21 6"></polyline>
+                      <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                    </svg>
+                  </button>
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 

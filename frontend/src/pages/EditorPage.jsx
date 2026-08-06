@@ -441,27 +441,27 @@ function EditorPage() {
   const isManual = project?.transcriptionStatus === 'manual';
 
   return (
-    <div className="glass-panel animate-fade-in" style={{ maxWidth: '950px', margin: '0 auto', width: '100%' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-        <Link to="/" style={{ color: 'var(--text-muted)', textDecoration: 'none', fontSize: '0.9rem' }}>
-          ← Back to Projects
+    <div className="rack-panel rack-unit animate-fade-in" style={{ maxWidth: '1000px', margin: '0 auto', width: '100%' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '0.85rem' }}>
+        <Link to="/" style={{ color: 'var(--text-muted)', textDecoration: 'none', fontSize: '0.85rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+          ← SESSIONS ARCHIVE
         </Link>
         <div style={{ display: 'flex', gap: '0.75rem' }}>
           <button 
             className="btn btn-secondary" 
             onClick={handleSaveManifest}
             disabled={isSaving || isRendering}
-            style={{ padding: '0.5rem 1rem', fontSize: '0.9rem' }}
+            style={{ padding: '0.45rem 1rem', fontSize: '0.85rem' }}
           >
-            {isSaving ? 'Saving...' : 'Save Draft'}
+            {isSaving ? 'Saving...' : '💾 SAVE DRAFT'}
           </button>
           <button 
-            className="btn" 
+            className="btn btn-record" 
             onClick={handleRender}
             disabled={isRendering || isSaving}
-            style={{ padding: '0.5rem 1rem', fontSize: '0.9rem' }}
+            style={{ padding: '0.45rem 1.1rem', fontSize: '0.85rem' }}
           >
-            {isRendering ? <span className="animate-pulse">Rendering...</span> : 'Render Video'}
+            {isRendering ? <span className="animate-pulse">RENDERING MASTER...</span> : '🔴 RENDER MASTER VIDEO'}
           </button>
         </div>
       </div>
@@ -709,14 +709,29 @@ function EditorPage() {
         </div>
       )}
 
-      {/* Integrated Audio Player */}
+      {/* Integrated Audio Player / Transport Console */}
       <div className={`audio-player-container ${isScrolled ? 'is-sticky' : ''}`}>
         <div className="audio-player-inner">
           <div className="audio-player-meta">
-            <span className="audio-player-title-badge">Audio Reference Player</span>
-            <span className="audio-player-time">
-              Current Time: {currentTime.toFixed(1)}s
+            <span className="audio-player-title-badge">
+              <span className="led-lamp green"></span>
+              MASTER TRANSPORT DECK
             </span>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+              {/* VU Meter Visualizer */}
+              <div className="vu-meter-graphic">
+                <div className={`vu-segment ${currentTime % 0.8 < 0.4 ? 'active-green' : ''}`}></div>
+                <div className={`vu-segment ${currentTime % 0.6 < 0.3 ? 'active-green' : ''}`}></div>
+                <div className={`vu-segment ${currentTime % 0.5 < 0.25 ? 'active-green' : ''}`}></div>
+                <div className={`vu-segment ${currentTime % 0.7 < 0.35 ? 'active-amber' : ''}`}></div>
+                <div className={`vu-segment ${currentTime % 0.9 < 0.2 ? 'active-red' : ''}`}></div>
+              </div>
+
+              <span className="audio-player-time">
+                TC: {formatTime(currentTime)}
+              </span>
+            </div>
           </div>
           <audio 
             ref={audioRef}
@@ -786,60 +801,47 @@ function EditorPage() {
 
           {manifest.map((segment, index) => {
             const isActive = currentTime >= segment.startTime && currentTime <= segment.endTime;
+            const seqStr = String(index + 1).padStart(2, '0');
             return (
               <div 
                 key={segment.id} 
+                className="channel-strip"
                 style={{ 
                   display: 'grid', 
-                  gridTemplateColumns: '40px 120px 120px 1fr 40px', 
+                  gridTemplateColumns: '60px 120px 120px 1fr 40px', 
                   gap: '1rem', 
                   alignItems: 'center', 
-                  background: isActive ? 'rgba(139, 92, 246, 0.12)' : 'rgba(0,0,0,0.2)', 
-                  padding: '0.85rem 1rem', 
-                  borderRadius: '8px', 
-                  border: '1px solid',
-                  borderColor: isActive ? 'var(--accent-light)' : 'var(--glass-border)',
-                  boxShadow: isActive ? '0 0 12px rgba(139, 92, 246, 0.2)' : 'none',
-                  transition: 'all 0.2s ease-in-out'
+                  background: isActive ? 'linear-gradient(180deg, #1e1b38 0%, #131226 100%)' : 'linear-gradient(180deg, #131722 0%, #0d0f17 100%)', 
+                  borderColor: isActive ? 'var(--accent-light)' : 'rgba(255, 255, 255, 0.08)',
+                  borderLeftColor: isActive ? 'var(--vu-green)' : 'var(--accent)',
+                  boxShadow: isActive ? '0 0 16px rgba(0, 255, 136, 0.2)' : 'none'
                 }}
               >
-                <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.25rem' }}>
+                  <span className="channel-badge">CH {seqStr}</span>
                   <button
                     onClick={() => handleJumpToSegment(segment.startTime)}
                     style={{
-                      background: isActive ? 'var(--accent)' : 'rgba(255, 255, 255, 0.05)',
+                      background: isActive ? 'var(--vu-green)' : 'rgba(255, 255, 255, 0.05)',
                       border: '1px solid',
-                      borderColor: isActive ? 'var(--accent-light)' : 'var(--glass-border)',
-                      color: isActive ? '#fff' : 'var(--text-muted)',
-                      borderRadius: '50%',
-                      width: '32px',
-                      height: '32px',
+                      borderColor: isActive ? '#00ff88' : 'rgba(255, 255, 255, 0.15)',
+                      color: isActive ? '#000' : 'var(--text-muted)',
+                      fontWeight: 'bold',
+                      borderRadius: '4px',
+                      padding: '0.2rem 0.4rem',
+                      fontSize: '0.7rem',
                       display: 'flex',
                       alignItems: 'center',
-                      justifyContent: 'center',
+                      gap: '0.25rem',
                       cursor: 'pointer',
-                      transition: 'all 0.2s ease',
-                      boxShadow: isActive ? '0 0 8px rgba(139, 92, 246, 0.4)' : 'none'
+                      transition: 'all 0.2s ease'
                     }}
-                    onMouseOver={(e) => {
-                      if (!isActive) {
-                        e.currentTarget.style.background = 'rgba(139, 92, 246, 0.15)';
-                        e.currentTarget.style.borderColor = 'var(--accent-light)';
-                        e.currentTarget.style.color = 'var(--accent-light)';
-                      }
-                    }}
-                    onMouseOut={(e) => {
-                      if (!isActive) {
-                        e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)';
-                        e.currentTarget.style.borderColor = 'var(--glass-border)';
-                        e.currentTarget.style.color = 'var(--text-muted)';
-                      }
-                    }}
-                    title="Seek player to segment start"
+                    title="CUE / Seek player to segment start"
                   >
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" stroke="none" style={{ marginLeft: '1px' }}>
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor">
                       <polygon points="5 3 19 12 5 21 5 3"></polygon>
                     </svg>
+                    CUE
                   </button>
                 </div>
 
@@ -849,14 +851,15 @@ function EditorPage() {
                     step="0.1" 
                     value={segment.startTime} 
                     onChange={(e) => handleTimeChange(segment.id, 'startTime', e.target.value)} 
+                    style={{ fontFamily: 'var(--font-lcd)', color: 'var(--lcd-cyan-bright)', fontSize: '0.95rem' }}
                   />
                   <button 
                     className="btn btn-secondary"
                     onClick={() => setTimeToCurrent(segment.id, 'startTime')}
-                    style={{ padding: '0.2rem', fontSize: '0.7rem', borderRadius: '4px', minHeight: 'auto', display: 'block', width: '100%', textTransform: 'uppercase', letterSpacing: '0.02em' }}
+                    style={{ padding: '0.2rem', fontSize: '0.7rem', borderRadius: '4px', minHeight: 'auto', display: 'block', width: '100%', textTransform: 'uppercase', letterSpacing: '0.02em', fontFamily: 'var(--font-lcd)' }}
                     title="Capture current audio time"
                   >
-                    ⏱ Capture
+                    ⏱ SYNC IN
                   </button>
                 </div>
 
@@ -866,14 +869,15 @@ function EditorPage() {
                     step="0.1" 
                     value={segment.endTime} 
                     onChange={(e) => handleTimeChange(segment.id, 'endTime', e.target.value)} 
+                    style={{ fontFamily: 'var(--font-lcd)', color: 'var(--lcd-amber)', fontSize: '0.95rem' }}
                   />
                   <button 
                     className="btn btn-secondary"
                     onClick={() => setTimeToCurrent(segment.id, 'endTime')}
-                    style={{ padding: '0.2rem', fontSize: '0.7rem', borderRadius: '4px', minHeight: 'auto', display: 'block', width: '100%', textTransform: 'uppercase', letterSpacing: '0.02em' }}
+                    style={{ padding: '0.2rem', fontSize: '0.7rem', borderRadius: '4px', minHeight: 'auto', display: 'block', width: '100%', textTransform: 'uppercase', letterSpacing: '0.02em', fontFamily: 'var(--font-lcd)' }}
                     title="Capture current audio time"
                   >
-                    ⏱ Capture
+                    ⏱ SYNC OUT
                   </button>
                 </div>
 
@@ -882,7 +886,7 @@ function EditorPage() {
                   value={segment.text} 
                   onChange={(e) => handleTextChange(segment.id, e.target.value)} 
                   placeholder="Enter lyric sentence..."
-                  style={{ height: '42px', border: isActive ? '1px solid var(--accent-light)' : '1px solid var(--glass-border)' }}
+                  style={{ height: '44px', border: isActive ? '1px solid var(--accent-light)' : '1px solid rgba(255, 255, 255, 0.12)', fontSize: '0.95rem' }}
                 />
 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', alignItems: 'center' }}>

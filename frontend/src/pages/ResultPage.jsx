@@ -58,34 +58,62 @@ function ResultPage() {
   }
 
   return (
-    <div className="glass-panel animate-fade-in" style={{ textAlign: 'center', maxWidth: '800px', margin: '0 auto', width: '100%' }}>
-      <h2 style={{ marginBottom: '0.5rem', background: '-webkit-linear-gradient(45deg, #10b981, #3b82f6)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
-        Video Generated Successfully!
-      </h2>
-      <p style={{ marginBottom: '0.5rem', fontWeight: '600', color: 'var(--text-main)' }}>{project.name}</p>
-      <p style={{ marginBottom: '2rem' }}>Your lyric video is ready. Preview it below or download it to your device.</p>
+    <div className="rack-panel rack-unit animate-fade-in" style={{ textAlign: 'center', maxWidth: '850px', margin: '0 auto', width: '100%' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '1rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+          <span className="led-lamp green"></span>
+          <h2 style={{ margin: 0, fontSize: '1.5rem', letterSpacing: '0.02em', textTransform: 'uppercase' }}>MASTERING & EXPORT STUDIO</h2>
+        </div>
+        <Link to="/" style={{ color: 'var(--text-muted)', textDecoration: 'none', fontSize: '0.85rem', fontWeight: 'bold' }}>
+          ← SESSIONS ARCHIVE
+        </Link>
+      </div>
 
-      <div style={{ background: '#000', borderRadius: '12px', overflow: 'hidden', marginBottom: '2rem', boxShadow: '0 10px 25px rgba(0,0,0,0.5)' }}>
+      <p style={{ marginBottom: '0.5rem', fontWeight: 'bold', fontSize: '1.2rem', color: 'var(--lcd-cyan-bright)', fontFamily: 'var(--font-heading)' }}>
+        {project.name}
+      </p>
+      <p style={{ marginBottom: '1.5rem', fontSize: '0.9rem', color: 'var(--text-muted)' }}>
+        Rendered master output verified. Play back on the studio monitor below or export directly to storage.
+      </p>
+
+      {/* Studio Video Monitor Bezel */}
+      <div style={{
+        background: '#040609',
+        borderRadius: '12px',
+        border: '2px solid rgba(255, 255, 255, 0.12)',
+        padding: '0.75rem',
+        marginBottom: '2rem',
+        boxShadow: '0 25px 50px rgba(0,0,0,0.8), inset 0 0 15px rgba(0,0,0,0.9)',
+        position: 'relative'
+      }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.25rem 0.5rem 0.75rem 0.5rem', fontSize: '0.75rem', fontFamily: 'var(--font-lcd)', color: 'var(--text-muted)' }}>
+          <span style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+            <span className="led-lamp green"></span> MONITOR FEED 01: ONLINE
+          </span>
+          <span className="lcd-display" style={{ fontSize: '0.7rem' }}>FORMAT: MP4 • 1080p</span>
+        </div>
+
         <video 
           controls 
           src={project.videoUrl} 
-          style={{ width: '100%', display: 'block', maxHeight: '500px' }}
+          style={{ width: '100%', display: 'block', maxHeight: '480px', borderRadius: '6px', background: '#000' }}
         >
           Your browser does not support the video tag.
         </video>
       </div>
 
+      {/* Export Action Controls */}
       <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center' }}>
-        <a href={project.videoUrl} download={`${project.name.replace(/\s+/g, '_')}.mp4`} className="btn">
+        <a href={project.videoUrl} download={`${project.name.replace(/\s+/g, '_')}.mp4`} className="btn" style={{ padding: '0.65rem 1.5rem' }}>
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
             <polyline points="7 10 12 15 17 10"></polyline>
             <line x1="12" y1="15" x2="12" y2="3"></line>
           </svg>
-          Download Video
+          EXPORT MASTER VIDEO FILE
         </a>
-        <Link to="/" className="btn btn-secondary">
-          Back to Projects
+        <Link to={`/projects/${id}/edit`} className="btn btn-secondary" style={{ padding: '0.65rem 1.25rem' }}>
+          RE-MIX IN EDITOR
         </Link>
       </div>
     </div>

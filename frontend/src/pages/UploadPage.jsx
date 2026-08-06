@@ -163,14 +163,19 @@ function UploadPage() {
   };
 
   return (
-    <div className="glass-panel animate-fade-in" style={{ textAlign: 'center', maxWidth: '600px', margin: '0 auto', width: '100%' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
-        <h2 style={{ margin: 0 }}>Upload Audio</h2>
-        <Link to="/" style={{ color: 'var(--text-muted)', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.9rem' }}>
-          ← Back to Projects
+    <div className="rack-panel animate-fade-in" style={{ textAlign: 'center', maxWidth: '680px', margin: '0 auto', width: '100%' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '1rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+          <span className="led-lamp green"></span>
+          <h2 style={{ margin: 0, fontSize: '1.5rem', letterSpacing: '0.02em', textTransform: 'uppercase' }}>TRACK INGESTION CONSOLE</h2>
+        </div>
+        <Link to="/" style={{ color: 'var(--text-muted)', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.85rem', fontWeight: 'bold' }}>
+          ← SESSIONS ARCHIVE
         </Link>
       </div>
-      <p style={{ marginBottom: '2rem', textAlign: 'left' }}>Select an audio file (MP3, M4A, WAV, etc.) to automatically analyze metadata, edit the song title, and synchronize lyrics.</p>
+      <p style={{ marginBottom: '1.5rem', textAlign: 'left', fontSize: '0.9rem' }}>
+        Load an audio track (MP3, WAV, M4A) to initiate signal probing, metadata extraction, and automatic vocal lyric synchronization.
+      </p>
 
       {!isConfigured && (
         <div style={{
@@ -219,17 +224,20 @@ function UploadPage() {
       <>
         <div 
           style={{
-            border: '2px dashed var(--glass-border)',
+            border: '2px dashed rgba(167, 139, 250, 0.25)',
             borderRadius: '12px',
-            padding: '3rem',
+            padding: '2.5rem',
             marginBottom: '2rem',
             cursor: (isUploading || isProbing) ? 'default' : 'pointer',
-            background: 'rgba(0,0,0,0.2)',
-            transition: 'all 0.3s ease'
+            background: '#07090e',
+            boxShadow: 'inset 0 4px 12px rgba(0,0,0,0.8)',
+            transition: 'all 0.3s ease',
+            position: 'relative',
+            overflow: 'hidden'
           }}
           onClick={() => !(isUploading || isProbing) && fileInputRef.current.click()}
-          onMouseOver={(e) => !(isUploading || isProbing) && (e.currentTarget.style.borderColor = 'var(--accent-light)')}
-          onMouseOut={(e) => !(isUploading || isProbing) && (e.currentTarget.style.borderColor = 'var(--glass-border)')}
+          onMouseOver={(e) => !(isUploading || isProbing) && (e.currentTarget.style.borderColor = 'var(--lcd-cyan)')}
+          onMouseOut={(e) => !(isUploading || isProbing) && (e.currentTarget.style.borderColor = 'rgba(167, 139, 250, 0.25)')}
         >
           <input 
             type="file" 
@@ -241,43 +249,50 @@ function UploadPage() {
           />
           {isProbing ? (
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1rem' }}>
-              <svg className="animate-spin" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--accent-light)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <line x1="12" y1="2" x2="12" y2="6"></line>
-                <line x1="12" y1="18" x2="12" y2="22"></line>
-                <line x1="4.93" y1="4.93" x2="7.76" y2="7.76"></line>
-                <line x1="16.24" y1="16.24" x2="19.07" y2="19.07"></line>
-                <line x1="2" y1="12" x2="6" y2="12"></line>
-                <line x1="18" y1="12" x2="22" y2="12"></line>
-                <line x1="4.93" y1="19.07" x2="7.76" y2="16.24"></line>
-                <line x1="16.24" y1="7.76" x2="19.07" y2="4.93"></line>
+              <svg className="spinning-reel" width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="var(--lcd-cyan-bright)" strokeWidth="1.5">
+                <circle cx="12" cy="12" r="10" strokeDasharray="4 2"></circle>
+                <circle cx="12" cy="12" r="4"></circle>
+                <line x1="12" y1="2" x2="12" y2="8"></line>
+                <line x1="12" y1="16" x2="12" y2="22"></line>
+                <line x1="2" y1="12" x2="8" y2="12"></line>
+                <line x1="16" y1="12" x2="22" y2="12"></line>
               </svg>
-              <p style={{ color: 'var(--accent-light)', fontWeight: '600' }}>Analyzing Audio & Extracting Metadata...</p>
+              <p className="lcd-display" style={{ fontSize: '0.9rem' }}>
+                <span className="led-lamp amber"></span> PROBING AUDIO SIGNAL & SAMPLING...
+              </p>
             </div>
           ) : file ? (
-            <div>
-              <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--accent-light)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginBottom: '1rem' }}>
-                <path d="M9 18V5l12-2v13"></path>
-                <circle cx="6" cy="18" r="3"></circle>
-                <circle cx="18" cy="16" r="3"></circle>
-              </svg>
-              <h3 style={{ color: 'var(--text-main)', wordBreak: 'break-all', marginBottom: '0.5rem' }}>{file.name}</h3>
-              <p style={{ color: 'var(--text-muted)', margin: 0 }}>
-                {(file.size / 1024 / 1024).toFixed(2)} MB {duration > 0 && `• ${Math.floor(duration / 60)}m ${Math.round(duration % 60)}s`}
-              </p>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem', marginBottom: '1rem' }}>
+                <svg className="spinning-reel" width="42" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--vu-green)" strokeWidth="1.5">
+                  <circle cx="7" cy="12" r="5"></circle>
+                  <circle cx="17" cy="12" r="5"></circle>
+                  <path d="M7 17h10"></path>
+                </svg>
+                <div style={{ textAlign: 'left' }}>
+                  <h3 style={{ color: 'var(--text-main)', wordBreak: 'break-all', margin: 0, fontSize: '1.1rem' }}>{file.name}</h3>
+                  <div style={{ display: 'flex', gap: '0.75rem', marginTop: '0.25rem', fontFamily: 'var(--font-lcd)', fontSize: '0.85rem', color: 'var(--lcd-cyan-bright)' }}>
+                    <span>{(file.size / 1024 / 1024).toFixed(2)} MB</span>
+                    {duration > 0 && <span>• {Math.floor(duration / 60)}m {Math.round(duration % 60)}s</span>}
+                  </div>
+                </div>
+              </div>
               {tempPath && (
-                <p style={{ color: '#10b981', fontSize: '0.85rem', fontWeight: 'bold', marginTop: '0.5rem' }}>
-                  ✓ Audio Analyzed Successfully
-                </p>
+                <div className="lcd-display" style={{ fontSize: '0.8rem', color: 'var(--vu-green)', border: '1px solid rgba(0, 255, 136, 0.3)' }}>
+                  <span className="led-lamp green"></span> SIGNAL PROBED: READY FOR SYNCHRONIZATION
+                </div>
               )}
             </div>
           ) : (
-            <div>
-              <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginBottom: '1rem' }}>
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                <polyline points="17 8 12 3 7 8"></polyline>
-                <line x1="12" y1="3" x2="12" y2="15"></line>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.75rem' }}>
+              <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="1.5">
+                <circle cx="7" cy="12" r="5"></circle>
+                <circle cx="17" cy="12" r="5"></circle>
+                <path d="M7 17h10"></path>
+                <path d="M7 7h10"></path>
               </svg>
-              <p>Click or drag to upload an audio file (MP3, M4A, WAV, etc.)</p>
+              <p style={{ margin: 0, fontWeight: '600', color: 'var(--text-main)' }}>Click or drop track audio file here (MP3, WAV, M4A)</p>
+              <span className="lcd-display" style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>INPUT BAY 01 • UNLOADED</span>
             </div>
           )}
         </div>
